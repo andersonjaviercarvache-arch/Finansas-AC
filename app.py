@@ -30,14 +30,42 @@ def normalizar_monto(val):
 
 col_carga1, col_carga2 = st.columns(2)
 with col_carga1:
-    archivo_banco = st.file_uploader("Sube el estado de cuenta (Excel)", type=["xlsx", "xls"])
+    archivos_banco = st.file_uploader(
+        "Sube los estados de cuenta (Excel) [Máx. 6]", 
+        type=["xlsx", "xls"], 
+        accept_multiple_files=True
+    )
 with col_carga2:
-    archivo_sri = st.file_uploader("Sube los comprobantes SRI (TXT)", type=["txt"])
+    archivos_sri = st.file_uploader(
+        "Sube los comprobantes SRI (TXT) [Máx. 6]", 
+        type=["txt"], 
+        accept_multiple_files=True
+    )
 
-if archivo_banco and archivo_sri:
+# Límite de 6 archivos
+if len(archivos_banco) > 6:
+    st.warning("Has subido más de 6 archivos de banco. Solo se procesarán los primeros 6.")
+    archivos_banco = archivos_banco[:6]
+
+if len(archivos_sri) > 6:
+    st.warning("Has subido más de 6 archivos del SRI. Solo se procesarán los primeros 6.")
+    archivos_sri = archivos_sri[:6]
+
+if archivos_banco and archivos_sri:
     try:
-        df_banco = pd.read_excel(archivo_banco, dtype=str).fillna("")
-        df_sri = pd.read_csv(archivo_sri, sep='\t', encoding='utf-8', dtype=str).fillna("")
+        # Concatenar archivos de banco
+        lista_df_banco = []
+        for archivo in archivos_banco:
+            df_temp = pd.read_excel(archivo, dtype=str).fillna("")
+            lista_df_banco.append(df_temp)
+        df_banco = pd.concat(lista_df_banco, ignore_index=True)
+
+        # Concatenar archivos SRI
+        lista_df_sri = []
+        for archivo in archivos_sri:
+            df_temp = pd.read_csv(archivo, sep='\t', encoding='utf-8', dtype=str).fillna("")
+            lista_df_sri.append(df_temp)
+        df_sri = pd.concat(lista_df_sri, ignore_index=True)
         
         st.markdown("---")
         
@@ -135,7 +163,6 @@ if archivo_banco and archivo_sri:
                     st.dataframe(resultados_banco, use_container_width=True)
                     
                     # --- NUEVA FUNCIÓN DE DESCARGA ---
-                    # Convertimos el DataFrame a formato CSV preparado para que Excel lea las tildes y caracteres correctamente (utf-8-sig)
                     csv_data = resultados_banco.to_csv(index=False).encode('utf-8-sig')
                     
                     st.download_button(
@@ -156,4 +183,4 @@ if archivo_banco and archivo_sri:
     except Exception as e:
         st.error(f"Ocurrió un error al procesar la información. Detalle técnico: {e}")
 else:
-    st.warning("Por favor, sube ambos archivos para comenzar la conciliación.")
+    st.warning("Por favor, sube al menos un archivo en ambas secciones para comenzar la conciliación.")
