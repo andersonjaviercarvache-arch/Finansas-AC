@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import re  # Importamos la librería de expresiones regulares para la multibúsqueda
+import re
 
 st.set_page_config(page_title="Conciliación Contable Avanzada", layout="wide")
 st.title("Sistema de Conciliación Contable")
@@ -46,13 +46,11 @@ if archivo_banco and archivo_sri:
         # --- SECCIÓN SRI ---
         with col_busqueda_sri:
             st.subheader("Búsqueda en SRI")
-            # Actualizamos las instrucciones del buscador
             termino_sri = st.text_input("1. Busca el comprobante (separa varias búsquedas con punto y coma ';')")
             
             if termino_sri:
-                # Lógica de multibúsqueda: separamos por ';' limpiamos espacios y creamos un patrón de búsqueda
                 terminos_s = [re.escape(t.strip().upper()) for t in termino_sri.split(';') if t.strip()]
-                patron_regex_s = '|'.join(terminos_s) # Une los términos con un "O" lógico (|)
+                patron_regex_s = '|'.join(terminos_s)
                 
                 filtro_sri = df_sri.apply(
                     lambda x: x.str.upper().str.contains(patron_regex_s, regex=True, na=False)
@@ -82,11 +80,9 @@ if archivo_banco and archivo_sri:
         # --- SECCIÓN BANCO ---
         with col_busqueda_banco:
             st.subheader("Búsqueda en Banco")
-            # Actualizamos las instrucciones del buscador
             termino_banco = st.text_input("2. Busca en estado de cuenta (separa varias búsquedas con punto y coma ';')")
             
             if termino_banco:
-                # Lógica de multibúsqueda para el banco
                 terminos_b = [re.escape(t.strip().upper()) for t in termino_banco.split(';') if t.strip()]
                 patron_regex_b = '|'.join(terminos_b)
                 
@@ -135,7 +131,21 @@ if archivo_banco and archivo_sri:
                     c2.metric("Suma Facturada ✅", f"${suma_facturados:,.2f}")
                     c3.metric("Suma Sin Facturar ❌", f"${suma_sin_facturar:,.2f}")
                     
+                    # Se muestra la tabla en pantalla
                     st.dataframe(resultados_banco, use_container_width=True)
+                    
+                    # --- NUEVA FUNCIÓN DE DESCARGA ---
+                    # Convertimos el DataFrame a formato CSV preparado para que Excel lea las tildes y caracteres correctamente (utf-8-sig)
+                    csv_data = resultados_banco.to_csv(index=False).encode('utf-8-sig')
+                    
+                    st.download_button(
+                        label="📥 Descargar Tabla de Resultados (Excel/CSV)",
+                        data=csv_data,
+                        file_name="reporte_banco_conciliado.csv",
+                        mime="text/csv",
+                        help="Haz clic aquí para guardar los resultados de tu búsqueda con sus montos, fechas y estados."
+                    )
+                    
                 else:
                     st.columns(1)[0].metric("Resultados", 0)
                     st.info("No se encontraron coincidencias en el banco.")
