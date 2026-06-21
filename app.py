@@ -7,25 +7,60 @@ st.title("Sistema de Conciliación Contable")
 
 def normalizar_monto(val):
     val_str = str(val).strip()
-    if not val_str or any(char in val_str for char in ['/', '-', '_', ':']):
-        return None
     
+    # Descartar nulos, vacíos o marcadores de pandas (NaN)
+    if not val_str or val_str.lower() in ['nan', 'nat', 'none', 'null']:
+        return None
+        
+    # Si tiene letras, lo descartamos (evita procesar textos, nombres o descripciones)
+    if re.search(r'[a-zA-Z]', val_str):
+        return None
+        
+    # Descartar formatos de fecha, hora o códigos con múltiples guiones/barras
+    if re.search(r'\d{2,4}[/-]\d{2,4}', val_str) or re.search(r'\d{2}:\d{2}', val_str) or val_str.count('-') > 1:
+        return None
+        
+    # Limpiar espacios y símbolos de moneda
     val_clean = val_str.replace("$", "").replace(" ", "")
     
-    if "," in val_clean and "." in val_clean:
-        val_clean = val_clean.replace(",", "")
-    elif "," in val_clean:
-        if len(val_clean.split(",")[-1]) == 2:
-            val_clean = val_clean.replace(",", ".")
+    # Debe contener al menos un dígito
+    if not any(c.isdigit() for c in val_clean):
+        return None
+        
+    # Asegurar que solo contenga dígitos, puntos, comas y un posible signo menos al inicio
+    if not re.match(r'^-?[\d\.,]+$', val_clean):
+        return None
+        
+    # Analizar inteligentemente puntos y comas para montos altos
+    last_comma = val_clean.rfind(',')
+    last_dot = val_clean.rfind('.')
+    
+    if last_comma > -1 and last_dot > -1:
+        if last_comma > last_dot: 
+            # Formato latino/europeo: 8.424,76
+            val_clean = val_clean.replace(".", "").replace(",", ".")
+        else: 
+            # Formato americano: 8,424.76
+            val_clean = val_clean.replace(",", "")
+    elif last_comma > -1:
+        # Si solo hay comas, comprobamos si la última es de decimales (1 o 2 dígitos al final)
+        if len(val_clean) - last_comma - 1 <= 2: 
+            val_clean = val_clean[:last_comma].replace(",", "") + "." + val_clean[last_comma+1:]
         else:
             val_clean = val_clean.replace(",", "")
-    
+    elif last_dot > -1:
+        # Si hay más de un punto sin comas, son separadores de miles (ej. 1.000.000)
+        if val_clean.count('.') > 1:
+            val_clean = val_clean.replace(".", "")
+            
     try:
         num = float(val_clean)
-        if num > 0.01:
-            return round(num, 2)
-    except:
+        # Usamos valor absoluto (abs) para emparejar cargos/abonos sin importar el signo
+        if abs(num) > 0.00:
+            return round(abs(num), 2)
+    except ValueError:
         pass
+        
     return None
 
 col_carga1, col_carga2 = st.columns(2)
