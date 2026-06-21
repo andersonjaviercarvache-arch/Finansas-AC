@@ -6,7 +6,7 @@ st.title("Sistema de Conciliación Contable")
 
 def normalizar_monto(val):
     val_str = str(val).strip()
-    if not val_str or any(char in val_str for char in ['/', '-', '_']):
+    if not val_str or any(char in val_str for char in ['/', '-', '_', ':']):
         return None
     
     val_clean = val_str.replace("$", "").replace(" ", "")
@@ -42,7 +42,7 @@ if archivo_banco and archivo_sri:
         
         col_busqueda_banco, col_busqueda_sri = st.columns(2)
         
-        # SECCION SRI (Procesamos esto primero para saber qué montos buscar)
+        # --- SECCIÓN SRI ---
         with col_busqueda_sri:
             st.subheader("Búsqueda en SRI")
             termino_sri = st.text_input("1. Busca el comprobante (RUC, nombre...)")
@@ -54,24 +54,27 @@ if archivo_banco and archivo_sri:
             else:
                 resultados_sri = df_sri
                 
-            montos_sri_activos = set()
+            # CORRECCIÓN: Ahora usamos una lista en lugar de un 'set' para permitir valores duplicados reales 
+            # y poder ir "consumiéndolos" uno por uno.
+            montos_sri_activos = []
             for col in resultados_sri.columns:
                 for val in resultados_sri[col]:
                     m = normalizar_monto(val)
                     if m is not None:
-                        montos_sri_activos.add(m)
+                        montos_sri_activos.append(m)
             
             if termino_sri:
                 if not resultados_sri.empty:
                     st.columns(1)[0].metric("Comprobantes Encontrados", len(resultados_sri))
                     st.dataframe(resultados_sri, use_container_width=True)
                 else:
+                    st.columns(1)[0].metric("Comprobantes Encontrados", 0)
                     st.info("No se encontraron coincidencias en el SRI.")
             else:
                 st.caption("Vista previa de comprobantes")
                 st.dataframe(df_sri.head(5), use_container_width=True)
 
-        # SECCION BANCO
+        # --- SECCIÓN BANCO ---
         with col_busqueda_banco:
             st.subheader("Búsqueda en Banco")
             termino_banco = st.text_input("2. Busca en estado de cuenta (nombre, detalle...)")
@@ -81,22 +84,41 @@ if archivo_banco and archivo_sri:
                 filtro_banco = df_banco.apply(lambda x: x.str.upper().str.contains(termino_b, na=False)).any(axis=1)
                 resultados_banco = df_banco[filtro_banco].copy()
                 
-                def evaluar_fila(row):
+                # CORRECCIÓN: Evaluamos fila por fila para poder descontar los montos ya usados
+                estados = []
+                montos_detectados = []
+                
+                # Copiamos la lista de montos disponibles para ir eliminándolos sin afectar otras búsquedas
+                montos_disponibles = list(montos_sri_activos) 
+                
+                for idx, row in resultados_banco.iterrows():
+                    encontrado = False
+                    
+                    # Extraer los montos numéricos de esta fila específica del banco
                     montos_en_fila = []
                     for val in row:
                         m = normalizar_monto(val)
                         if m is not None:
                             montos_en_fila.append(m)
                     
+                    # Verificamos si alguno de los montos del banco coincide con los disponibles en el SRI
                     for monto in montos_en_fila:
-                        if monto in montos_sri_activos:
-                            return pd.Series(["Facturado", monto])
+                        if monto in montos_disponibles:
+                            montos_disponibles.remove(monto) # Consume el monto para que no se use de nuevo
+                            estados.append("Facturado")
+                            montos_detectados.append(monto)
+                            encontrado = True
+                            break # Sale del ciclo, ya encontró su pareja
                     
-                    monto_sin_facturar = montos_en_fila[0] if montos_en_fila else 0.0
-                    return pd.Series(["Sin facturar", monto_sin_facturar])
+                    # Si ningún monto coincidió con los disponibles
+                    if not encontrado:
+                        estados.append("Sin facturar")
+                        montos_detectados.append(montos_en_fila[0] if montos_en_fila else 0.0)
 
                 if not resultados_banco.empty:
-                    resultados_banco[['Estado SRI', 'Monto Detectado']] = resultados_banco.apply(evaluar_fila, axis=1)
+                    # Asignamos las nuevas columnas con los cálculos exactos
+                    resultados_banco['Estado SRI'] = estados
+                    resultados_banco['Monto Detectado'] = montos_detectados
                     
                     cols_ordenadas = ['Estado SRI', 'Monto Detectado'] + [c for c in resultados_banco.columns if c not in ['Estado SRI', 'Monto Detectado']]
                     resultados_banco = resultados_banco[cols_ordenadas]
@@ -111,12 +133,13 @@ if archivo_banco and archivo_sri:
                     
                     st.dataframe(resultados_banco, use_container_width=True)
                 else:
+                    st.columns(1)[0].metric("Resultados", 0)
                     st.info("No se encontraron coincidencias en el banco.")
             else:
                 st.caption("Vista previa del estado de cuenta")
                 st.dataframe(df_banco.head(5), use_container_width=True)
 
     except Exception as e:
-        st.error(f"Ocurrió un error al procesar la información. Detalle técnico {e}")
+        st.error(f"Ocurrió un error al procesar la información. Detalle técnico: {e}")
 else:
     st.warning("Por favor, sube ambos archivos para comenzar la conciliación.")
