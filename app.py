@@ -14,30 +14,31 @@ with col2:
 
 # Barra de búsqueda
 st.subheader("Búsqueda de Movimientos")
-# Ahora la barra es más flexible gracias al cambio de tipo de dato
 termino_busqueda = st.text_input("Ingresa el nombre, RUC, monto o número de comprobante a buscar")
 
 # Lógica de procesamiento
 if archivo_banco and archivo_sri:
     try:
-        # 1. Lectura del Excel del Banco
-        df_banco = pd.read_excel(archivo_banco)
+        # 1. Lectura del Excel del Banco (Forzando formato texto desde el inicio)
+        df_banco = pd.read_excel(archivo_banco, dtype=str)
         
-        # 2. Lectura del TXT del SRI
-        df_sri = pd.read_csv(archivo_sri, sep='\t', encoding='utf-8')
+        # 2. Lectura del TXT del SRI (Forzando formato texto desde el inicio)
+        df_sri = pd.read_csv(archivo_sri, sep='\t', encoding='utf-8', dtype=str)
         
         if termino_busqueda:
-            # Convierte el término a mayúsculas para evitar problemas de capitalización
             termino = termino_busqueda.upper()
             
-            # 3. Filtrado de datos con conversión explícita a String (.astype(str))
-            # Esto soluciona el error técnico al forzar que los números se evalúen como texto
-            filtro_banco = df_banco.astype(str).apply(
+            # 3. Filtrado de datos 
+            # Reemplazamos los valores nulos (NaN) por texto vacío para evitar errores en la búsqueda
+            df_banco = df_banco.fillna("")
+            df_sri = df_sri.fillna("")
+
+            filtro_banco = df_banco.apply(
                 lambda x: x.str.upper().str.contains(termino, na=False)
             ).any(axis=1)
             resultados_banco = df_banco[filtro_banco]
             
-            filtro_sri = df_sri.astype(str).apply(
+            filtro_sri = df_sri.apply(
                 lambda x: x.str.upper().str.contains(termino, na=False)
             ).any(axis=1)
             resultados_sri = df_sri[filtro_sri]
