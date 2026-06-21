@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re  # Importamos la librería de expresiones regulares para la multibúsqueda
 
 st.set_page_config(page_title="Conciliación Contable Avanzada", layout="wide")
 st.title("Sistema de Conciliación Contable")
@@ -45,17 +46,21 @@ if archivo_banco and archivo_sri:
         # --- SECCIÓN SRI ---
         with col_busqueda_sri:
             st.subheader("Búsqueda en SRI")
-            termino_sri = st.text_input("1. Busca el comprobante (RUC, nombre...)")
+            # Actualizamos las instrucciones del buscador
+            termino_sri = st.text_input("1. Busca el comprobante (separa varias búsquedas con punto y coma ';')")
             
             if termino_sri:
-                termino_s = termino_sri.upper()
-                filtro_sri = df_sri.apply(lambda x: x.str.upper().str.contains(termino_s, na=False)).any(axis=1)
+                # Lógica de multibúsqueda: separamos por ';' limpiamos espacios y creamos un patrón de búsqueda
+                terminos_s = [re.escape(t.strip().upper()) for t in termino_sri.split(';') if t.strip()]
+                patron_regex_s = '|'.join(terminos_s) # Une los términos con un "O" lógico (|)
+                
+                filtro_sri = df_sri.apply(
+                    lambda x: x.str.upper().str.contains(patron_regex_s, regex=True, na=False)
+                ).any(axis=1)
                 resultados_sri = df_sri[filtro_sri]
             else:
                 resultados_sri = df_sri
                 
-            # CORRECCIÓN: Ahora usamos una lista en lugar de un 'set' para permitir valores duplicados reales 
-            # y poder ir "consumiéndolos" uno por uno.
             montos_sri_activos = []
             for col in resultados_sri.columns:
                 for val in resultados_sri[col]:
@@ -77,46 +82,45 @@ if archivo_banco and archivo_sri:
         # --- SECCIÓN BANCO ---
         with col_busqueda_banco:
             st.subheader("Búsqueda en Banco")
-            termino_banco = st.text_input("2. Busca en estado de cuenta (nombre, detalle...)")
+            # Actualizamos las instrucciones del buscador
+            termino_banco = st.text_input("2. Busca en estado de cuenta (separa varias búsquedas con punto y coma ';')")
             
             if termino_banco:
-                termino_b = termino_banco.upper()
-                filtro_banco = df_banco.apply(lambda x: x.str.upper().str.contains(termino_b, na=False)).any(axis=1)
+                # Lógica de multibúsqueda para el banco
+                terminos_b = [re.escape(t.strip().upper()) for t in termino_banco.split(';') if t.strip()]
+                patron_regex_b = '|'.join(terminos_b)
+                
+                filtro_banco = df_banco.apply(
+                    lambda x: x.str.upper().str.contains(patron_regex_b, regex=True, na=False)
+                ).any(axis=1)
                 resultados_banco = df_banco[filtro_banco].copy()
                 
-                # CORRECCIÓN: Evaluamos fila por fila para poder descontar los montos ya usados
                 estados = []
                 montos_detectados = []
-                
-                # Copiamos la lista de montos disponibles para ir eliminándolos sin afectar otras búsquedas
                 montos_disponibles = list(montos_sri_activos) 
                 
                 for idx, row in resultados_banco.iterrows():
                     encontrado = False
-                    
-                    # Extraer los montos numéricos de esta fila específica del banco
                     montos_en_fila = []
+                    
                     for val in row:
                         m = normalizar_monto(val)
                         if m is not None:
                             montos_en_fila.append(m)
                     
-                    # Verificamos si alguno de los montos del banco coincide con los disponibles en el SRI
                     for monto in montos_en_fila:
                         if monto in montos_disponibles:
-                            montos_disponibles.remove(monto) # Consume el monto para que no se use de nuevo
+                            montos_disponibles.remove(monto) 
                             estados.append("Facturado")
                             montos_detectados.append(monto)
                             encontrado = True
-                            break # Sale del ciclo, ya encontró su pareja
+                            break 
                     
-                    # Si ningún monto coincidió con los disponibles
                     if not encontrado:
                         estados.append("Sin facturar")
                         montos_detectados.append(montos_en_fila[0] if montos_en_fila else 0.0)
 
                 if not resultados_banco.empty:
-                    # Asignamos las nuevas columnas con los cálculos exactos
                     resultados_banco['Estado SRI'] = estados
                     resultados_banco['Monto Detectado'] = montos_detectados
                     
