@@ -14,33 +14,32 @@ with col2:
 
 # Barra de búsqueda
 st.subheader("Búsqueda de Movimientos")
-termino_busqueda = st.text_input("Ingresa el nombre del cliente, proveedor o detalle a buscar")
+# Ahora la barra es más flexible gracias al cambio de tipo de dato
+termino_busqueda = st.text_input("Ingresa el nombre, RUC, monto o número de comprobante a buscar")
 
 # Lógica de procesamiento
 if archivo_banco and archivo_sri:
     try:
         # 1. Lectura del Excel del Banco
-        # Asume que la cabecera está en la primera fila. Ajusta 'header' si es distinto.
         df_banco = pd.read_excel(archivo_banco)
         
         # 2. Lectura del TXT del SRI
-        # El SRI suele separar los datos por tabulaciones ('\t') en sus reportes de texto.
         df_sri = pd.read_csv(archivo_sri, sep='\t', encoding='utf-8')
         
         if termino_busqueda:
-            # 3. Filtrado de datos
-            # Convierte todo a mayúsculas para que la búsqueda no sea sensible a minúsculas/mayúsculas
+            # Convierte el término a mayúsculas para evitar problemas de capitalización
             termino = termino_busqueda.upper()
             
-            # Filtra el DataFrame del banco (ajusta 'CONCEPTO' o 'DETALLE' según la columna de tu banco)
-            # Reemplaza 'Descripcion' con el nombre real de la columna de tu Excel
-            columnas_banco_str = df_banco.select_dtypes(include=['object']).columns
-            filtro_banco = df_banco[columnas_banco_str].apply(lambda x: x.str.upper().str.contains(termino, na=False)).any(axis=1)
+            # 3. Filtrado de datos con conversión explícita a String (.astype(str))
+            # Esto soluciona el error técnico al forzar que los números se evalúen como texto
+            filtro_banco = df_banco.astype(str).apply(
+                lambda x: x.str.upper().str.contains(termino, na=False)
+            ).any(axis=1)
             resultados_banco = df_banco[filtro_banco]
             
-            # Filtra el DataFrame del SRI (buscará en columnas como 'Razón Social Proveedor')
-            columnas_sri_str = df_sri.select_dtypes(include=['object']).columns
-            filtro_sri = df_sri[columnas_sri_str].apply(lambda x: x.str.upper().str.contains(termino, na=False)).any(axis=1)
+            filtro_sri = df_sri.astype(str).apply(
+                lambda x: x.str.upper().str.contains(termino, na=False)
+            ).any(axis=1)
             resultados_sri = df_sri[filtro_sri]
             
             # 4. Mostrar Resultados
@@ -50,7 +49,7 @@ if archivo_banco and archivo_sri:
             if not resultados_banco.empty:
                 st.dataframe(resultados_banco, use_container_width=True)
             else:
-                st.info("No se encontraron coincidencias en el estado de cuenta.")
+                st.info("No se encontraron coincidencias en el estado de cuenta del banco.")
                 
             st.markdown("### Comprobantes Electrónicos SRI")
             if not resultados_sri.empty:
@@ -59,6 +58,6 @@ if archivo_banco and archivo_sri:
                 st.info("No se encontraron coincidencias en los comprobantes del SRI.")
 
     except Exception as e:
-        st.error(f"Ocurrió un error al procesar los archivos. Revisa el formato. Detalle técnico: {e}")
+        st.error(f"Ocurrió un error al procesar los archivos. Detalle técnico: {e}")
 else:
     st.warning("Por favor, sube ambos archivos para comenzar la conciliación.")
