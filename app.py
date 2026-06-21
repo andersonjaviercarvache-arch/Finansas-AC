@@ -60,10 +60,16 @@ if archivos_banco and archivos_sri:
             lista_df_banco.append(df_temp)
         df_banco = pd.concat(lista_df_banco, ignore_index=True)
 
-        # Concatenar archivos SRI
+        # Concatenar archivos SRI con el ajuste de codificación (latin1)
         lista_df_sri = []
         for archivo in archivos_sri:
-            df_temp = pd.read_csv(archivo, sep='\t', encoding='utf-8', dtype=str).fillna("")
+            df_temp = pd.read_csv(
+                archivo, 
+                sep='\t', 
+                encoding='latin1', 
+                encoding_errors='replace', 
+                dtype=str
+            ).fillna("")
             lista_df_sri.append(df_temp)
         df_sri = pd.concat(lista_df_sri, ignore_index=True)
         
@@ -162,7 +168,7 @@ if archivos_banco and archivos_sri:
                     # Se muestra la tabla en pantalla
                     st.dataframe(resultados_banco, use_container_width=True)
                     
-                    # --- NUEVA FUNCIÓN DE DESCARGA ---
+                    # --- FUNCIÓN DE DESCARGA ---
                     csv_data = resultados_banco.to_csv(index=False).encode('utf-8-sig')
                     
                     st.download_button(
