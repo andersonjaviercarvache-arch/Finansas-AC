@@ -126,8 +126,8 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
             st.session_state.proyectos.append({
                 "Proyecto": nombre_proyecto,
                 "Costo Directo": costo_directo,
-                "Fondo Imprevistos": reserva_imprevistos, # Nombres de columna fijos
-                "Ganancia Neta": ganancia_real,           # Nombres de columna fijos
+                "Fondo Imprevistos": reserva_imprevistos, 
+                "Ganancia Neta": ganancia_real,           
                 "PRECIO VENTA FINAL": precio_venta_final,
                 "IVA (15%)": iva_monto,
                 "PRECIO TOTAL": precio_total_con_iva,
@@ -155,7 +155,6 @@ if st.session_state.proyectos:
     datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
     df_resultados = pd.DataFrame(datos_publicos)
     
-    # Rellenar cualquier NaN con 0 para evitar errores visuales
     df_resultados.fillna(0, inplace=True)
     
     formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col != "Proyecto"}
@@ -167,7 +166,6 @@ if st.session_state.proyectos:
     st.subheader("🛠️ Panel de Control de Proyectos")
     col_gest1, col_gest2 = st.columns(2)
     
-    # Herramienta para Eliminar
     with col_gest1:
         st.markdown("**❌ Eliminar un Proyecto**")
         nombres_proyectos = [p["Proyecto"] for p in st.session_state.proyectos]
@@ -178,134 +176,190 @@ if st.session_state.proyectos:
             st.warning(f"El proyecto '{proyecto_a_eliminar}' ha sido eliminado.")
             st.rerun()
 
-    # --- LÓGICA DE EXPORTACIÓN A PDF ---
-    def generar_pdf(lista_proyectos, df_interno):
+    # --- LÓGICA DE EXPORTACIÓN A PDF (DINÁMICA) ---
+    def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, mes=None):
         pdf = FPDF(orientation="P", unit="mm", format="A4")
         pdf.set_margins(left=10, top=15, right=10)
         pdf.add_page() 
         
-        # ==========================================
-        # 1. COTIZACIÓN CLIENTE
-        # ==========================================
-        pdf.set_font("Helvetica", 'B', 14)
-        pdf.cell(0, 8, "COTIZACIÓN COMERCIAL - LATITUD SOLAR", new_x="LMARGIN", new_y="NEXT", align='C')
-        pdf.ln(5)
-        
-        pdf.set_font("Helvetica", 'B', 10)
-        pdf.cell(85, 8, "Descripción del Proyecto", border=1, align='C')
-        pdf.cell(35, 8, "Subtotal", border=1, align='C')
-        pdf.cell(35, 8, "IVA (15%)", border=1, align='C')
-        pdf.cell(35, 8, "Total a Pagar", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
-        
-        pdf.set_font("Helvetica", '', 9)
-        for _, row in df_interno.iterrows():
-            nombre = str(row['Proyecto'])[:40]
-            pdf.cell(85, 8, nombre, border=1)
-            pdf.cell(35, 8, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${row['IVA (15%)']:,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${row['PRECIO TOTAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+        if tipo_exportacion == "individual":
+            # ==========================================
+            # 1. COTIZACIÓN CLIENTE (Solo individual)
+            # ==========================================
+            pdf.set_font("Helvetica", 'B', 14)
+            pdf.cell(0, 8, "COTIZACIÓN COMERCIAL - LATITUD SOLAR", new_x="LMARGIN", new_y="NEXT", align='C')
+            pdf.ln(5)
             
-        pdf.ln(3)
-        pdf.set_font("Helvetica", 'I', 8)
-        pdf.cell(0, 8, "Nota: Los valores incluyen mano de obra, viáticos y equipos acordados.", new_x="LMARGIN", new_y="NEXT", align='C')
-        pdf.ln(10)
-
-        # ==========================================
-        # 2. DESGLOSE DETALLADO DE COSTOS OPERATIVOS
-        # ==========================================
-        pdf.set_font("Helvetica", 'B', 14)
-        pdf.cell(0, 8, "DESGLOSE DETALLADO DE COSTOS OPERATIVOS", new_x="LMARGIN", new_y="NEXT", align='C')
-        pdf.ln(5)
-
-        for p in lista_proyectos:
             pdf.set_font("Helvetica", 'B', 10)
-            pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Duración Obra: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
-            
-            # Tabla 1: Personal
-            pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(0, 6, "Costo de Personal (Asignado a la obra):", new_x="LMARGIN", new_y="NEXT")
-            
-            pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(70, 6, "Rol", border=1)
-            pdf.cell(60, 6, "Costo Diario por Persona", border=1, align='C')
-            pdf.cell(60, 6, "Total Rol (Todos los días)", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+            pdf.cell(85, 8, "Descripción del Proyecto", border=1, align='C')
+            pdf.cell(35, 8, "Subtotal", border=1, align='C')
+            pdf.cell(35, 8, "IVA (15%)", border=1, align='C')
+            pdf.cell(35, 8, "Total a Pagar", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
             
             pdf.set_font("Helvetica", '', 9)
-            suma_personal = 0
-            for persona in p["_Personal"]:
-                total_rol = persona["Costo Día ($)"] * p["_Dias"]
-                suma_personal += total_rol
-                pdf.cell(70, 6, str(persona["Rol"]), border=1)
-                pdf.cell(60, 6, f"${persona['Costo Día ($)']:,.2f}", border=1, align='C')
-                pdf.cell(60, 6, f"${total_rol:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
-            
-            pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(130, 6, "TOTAL COSTO PERSONAL", border=1, align='R')
-            pdf.cell(60, 6, f"${suma_personal:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
-            
-            pdf.ln(3)
-            
-            # Tabla 2: Viáticos
-            pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(0, 6, "Desglose de Viáticos (Calculado para todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
-            
-            pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(60, 6, "Concepto", border=1)
-            pdf.cell(40, 6, "Diario/Noche (c/u)", border=1, align='C')
-            pdf.cell(30, 6, "Días", border=1, align='C')
-            pdf.cell(60, 6, "Costo Total del Grupo", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
-            
-            pdf.set_font("Helvetica", '', 9)
-            num_personas = len(p["_Personal"])
-            suma_viaticos = 0
-            for concepto, datos in p["_Viaticos"].items():
-                total_concepto = datos["costo"] * datos["dias"] * num_personas
-                suma_viaticos += total_concepto
-                pdf.cell(60, 6, concepto, border=1)
-                pdf.cell(40, 6, f"${datos['costo']:,.2f}", border=1, align='C')
-                pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
-                pdf.cell(60, 6, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+            for _, row in df_interno.iterrows():
+                nombre = str(row['Proyecto'])[:40]
+                pdf.cell(85, 8, nombre, border=1)
+                pdf.cell(35, 8, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, align='R')
+                pdf.cell(35, 8, f"${row['IVA (15%)']:,.2f}", border=1, align='R')
+                pdf.cell(35, 8, f"${row['PRECIO TOTAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
                 
-            pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(130, 6, "TOTAL VIÁTICOS", border=1, align='R')
-            pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
-            
             pdf.ln(3)
-            # Otros
-            pdf.set_font("Helvetica", '', 9)
-            pdf.cell(0, 6, f"Materiales y Otros Costos: ${p['_Materiales']:,.2f}", new_x="LMARGIN", new_y="NEXT")
-            pdf.ln(8)
+            pdf.set_font("Helvetica", 'I', 8)
+            pdf.cell(0, 8, "Nota: Los valores incluyen mano de obra, viáticos y equipos acordados.", new_x="LMARGIN", new_y="NEXT", align='C')
+            pdf.ln(10)
+
+            # ==========================================
+            # 2. DESGLOSE DETALLADO DE COSTOS (Solo individual)
+            # ==========================================
+            pdf.set_font("Helvetica", 'B', 14)
+            pdf.cell(0, 8, "DESGLOSE DETALLADO DE COSTOS OPERATIVOS", new_x="LMARGIN", new_y="NEXT", align='C')
+            pdf.ln(5)
+
+            for p in lista_proyectos:
+                pdf.set_font("Helvetica", 'B', 10)
+                pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Duración Obra: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
+                
+                # Tabla 1: Personal
+                pdf.set_font("Helvetica", 'B', 9)
+                pdf.cell(0, 6, "Costo de Personal (Asignado a la obra):", new_x="LMARGIN", new_y="NEXT")
+                
+                pdf.set_font("Helvetica", 'B', 9)
+                pdf.cell(70, 6, "Rol", border=1)
+                pdf.cell(60, 6, "Costo Diario por Persona", border=1, align='C')
+                pdf.cell(60, 6, "Total Rol (Todos los días)", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+                
+                pdf.set_font("Helvetica", '', 9)
+                suma_personal = 0
+                for persona in p["_Personal"]:
+                    total_rol = persona["Costo Día ($)"] * p["_Dias"]
+                    suma_personal += total_rol
+                    pdf.cell(70, 6, str(persona["Rol"]), border=1)
+                    pdf.cell(60, 6, f"${persona['Costo Día ($)']:,.2f}", border=1, align='C')
+                    pdf.cell(60, 6, f"${total_rol:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+                
+                pdf.set_font("Helvetica", 'B', 9)
+                pdf.cell(130, 6, "TOTAL COSTO PERSONAL", border=1, align='R')
+                pdf.cell(60, 6, f"${suma_personal:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+                
+                pdf.ln(3)
+                
+                # Tabla 2: Viáticos
+                pdf.set_font("Helvetica", 'B', 9)
+                pdf.cell(0, 6, "Desglose de Viáticos (Calculado para todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
+                
+                pdf.set_font("Helvetica", 'B', 9)
+                pdf.cell(60, 6, "Concepto", border=1)
+                pdf.cell(40, 6, "Diario/Noche (c/u)", border=1, align='C')
+                pdf.cell(30, 6, "Días", border=1, align='C')
+                pdf.cell(60, 6, "Costo Total del Grupo", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+                
+                pdf.set_font("Helvetica", '', 9)
+                num_personas = len(p["_Personal"])
+                suma_viaticos = 0
+                for concepto, datos in p["_Viaticos"].items():
+                    total_concepto = datos["costo"] * datos["dias"] * num_personas
+                    suma_viaticos += total_concepto
+                    pdf.cell(60, 6, concepto, border=1)
+                    pdf.cell(40, 6, f"${datos['costo']:,.2f}", border=1, align='C')
+                    pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
+                    pdf.cell(60, 6, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+                    
+                pdf.set_font("Helvetica", 'B', 9)
+                pdf.cell(130, 6, "TOTAL VIÁTICOS", border=1, align='R')
+                pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+                
+                pdf.ln(3)
+                # Otros
+                pdf.set_font("Helvetica", '', 9)
+                pdf.cell(0, 6, f"Materiales y Otros Costos: ${p['_Materiales']:,.2f}", new_x="LMARGIN", new_y="NEXT")
+                pdf.ln(8)
+                
+            # ==========================================
+            # 3. REPORTE INTERNO (Individual)
+            # ==========================================
+            pdf.ln(2)
+            pdf.set_font("Helvetica", 'B', 14)
+            pdf.cell(0, 8, "REPORTE INTERNO DE RENTABILIDAD", new_x="LMARGIN", new_y="NEXT", align='C')
+            pdf.ln(5)
             
-        # ==========================================
-        # 3. REPORTE INTERNO DE RENTABILIDAD
-        # ==========================================
-        pdf.ln(2)
-        pdf.set_font("Helvetica", 'B', 14)
-        pdf.cell(0, 8, "REPORTE INTERNO DE RENTABILIDAD", new_x="LMARGIN", new_y="NEXT", align='C')
-        pdf.ln(5)
-        
-        pdf.set_font("Helvetica", 'B', 8)
-        pdf.cell(50, 8, "Proyecto", border=1, align='C')
-        pdf.cell(35, 8, "Costo Directo", border=1, align='C')
-        pdf.cell(35, 8, "Imprevistos", border=1, align='C')
-        pdf.cell(35, 8, "Ganancia Neta", border=1, align='C')
-        pdf.cell(35, 8, "Precio Venta", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
-        
-        pdf.set_font("Helvetica", '', 8)
-        for _, row in df_interno.iterrows():
-            nombre = str(row['Proyecto'])[:25]
+            pdf.set_font("Helvetica", 'B', 8)
+            pdf.cell(50, 8, "Proyecto", border=1, align='C')
+            pdf.cell(35, 8, "Costo Directo", border=1, align='C')
+            pdf.cell(35, 8, "Imprevistos", border=1, align='C')
+            pdf.cell(35, 8, "Ganancia Neta", border=1, align='C')
+            pdf.cell(35, 8, "Precio Venta", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
             
-            # Seguridad adicional por si recargas la página y hay datos viejos en memoria
-            c_directo = row.get('Costo Directo', 0.0)
-            c_imprevisto = row.get('Fondo Imprevistos', 0.0)
-            c_ganancia = row.get('Ganancia Neta', 0.0)
-            p_venta = row.get('PRECIO VENTA FINAL', 0.0)
+            pdf.set_font("Helvetica", '', 8)
+            for _, row in df_interno.iterrows():
+                nombre = str(row['Proyecto'])[:25]
+                pdf.cell(50, 8, nombre, border=1)
+                pdf.cell(35, 8, f"${row.get('Costo Directo', 0.0):,.2f}", border=1, align='R')
+                pdf.cell(35, 8, f"${row.get('Fondo Imprevistos', 0.0):,.2f}", border=1, align='R')
+                pdf.cell(35, 8, f"${row.get('Ganancia Neta', 0.0):,.2f}", border=1, align='R')
+                pdf.cell(35, 8, f"${row.get('PRECIO VENTA FINAL', 0.0):,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+
+        elif tipo_exportacion == "todos":
+            # ==========================================
+            # REPORTE GENERAL (Consolidado)
+            # ==========================================
+            pdf.set_font("Helvetica", 'B', 14)
+            titulo_mes = f"REPORTE INTERNO DE RENTABILIDAD - {mes.upper()}" if mes else "REPORTE INTERNO DE RENTABILIDAD"
+            pdf.cell(0, 8, titulo_mes, new_x="LMARGIN", new_y="NEXT", align='C')
+            pdf.ln(5)
             
-            pdf.cell(50, 8, nombre, border=1)
-            pdf.cell(35, 8, f"${c_directo:,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${c_imprevisto:,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${c_ganancia:,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${p_venta:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+            # Encabezados ajustados a 190mm (40 + 25x6 = 190)
+            pdf.set_font("Helvetica", 'B', 8)
+            pdf.cell(40, 8, "Proyecto", border=1, align='C')
+            pdf.cell(25, 8, "Costo Dir.", border=1, align='C')
+            pdf.cell(25, 8, "Imprev.", border=1, align='C')
+            pdf.cell(25, 8, "Ganancia", border=1, align='C')
+            pdf.cell(25, 8, "IVA (15%)", border=1, align='C')
+            pdf.cell(25, 8, "Venta Final", border=1, align='C')
+            pdf.cell(25, 8, "Precio Total", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+            
+            pdf.set_font("Helvetica", '', 8)
+            
+            sum_costo = 0
+            sum_imprev = 0
+            sum_ganancia = 0
+            sum_iva = 0
+            sum_venta = 0
+            sum_total = 0
+            
+            for _, row in df_interno.iterrows():
+                nombre = str(row['Proyecto'])[:20]
+                c_directo = row.get('Costo Directo', 0.0)
+                c_imprevisto = row.get('Fondo Imprevistos', 0.0)
+                c_ganancia = row.get('Ganancia Neta', 0.0)
+                iva = row.get('IVA (15%)', 0.0)
+                p_venta = row.get('PRECIO VENTA FINAL', 0.0)
+                p_total = row.get('PRECIO TOTAL', 0.0)
+                
+                sum_costo += c_directo
+                sum_imprev += c_imprevisto
+                sum_ganancia += c_ganancia
+                sum_iva += iva
+                sum_venta += p_venta
+                sum_total += p_total
+                
+                pdf.cell(40, 8, nombre, border=1)
+                pdf.cell(25, 8, f"${c_directo:,.2f}", border=1, align='R')
+                pdf.cell(25, 8, f"${c_imprevisto:,.2f}", border=1, align='R')
+                pdf.cell(25, 8, f"${c_ganancia:,.2f}", border=1, align='R')
+                pdf.cell(25, 8, f"${iva:,.2f}", border=1, align='R')
+                pdf.cell(25, 8, f"${p_venta:,.2f}", border=1, align='R')
+                pdf.cell(25, 8, f"${p_total:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+                
+            # Fila de Totales Generales
+            pdf.set_font("Helvetica", 'B', 8)
+            pdf.cell(40, 8, "TOTALES MENSUALES", border=1, align='R')
+            pdf.cell(25, 8, f"${sum_costo:,.2f}", border=1, align='R')
+            pdf.cell(25, 8, f"${sum_imprev:,.2f}", border=1, align='R')
+            pdf.cell(25, 8, f"${sum_ganancia:,.2f}", border=1, align='R')
+            pdf.cell(25, 8, f"${sum_iva:,.2f}", border=1, align='R')
+            pdf.cell(25, 8, f"${sum_venta:,.2f}", border=1, align='R')
+            pdf.cell(25, 8, f"${sum_total:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
 
         temp_file = "temp_report.pdf"
         pdf.output(temp_file)
@@ -314,25 +368,31 @@ if st.session_state.proyectos:
         os.remove(temp_file)
         return pdf_bytes
 
-    # Herramienta para Descargar (Todos o Específico)
+    # Herramienta para Descargar
     with col_gest2:
-        st.markdown("**📥 Descargar PDF Comercial**")
+        st.markdown("**📥 Descargar PDF Comercial / Reporte**")
         opciones_descarga = ["Todos los proyectos"] + nombres_proyectos
         seleccion_descarga = st.selectbox("Selecciona qué deseas exportar al PDF:", opciones_descarga)
         
+        meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+        
         if seleccion_descarga == "Todos los proyectos":
+            mes_seleccionado = st.selectbox("Selecciona el mes del reporte:", meses)
+            
             lista_a_exportar = st.session_state.proyectos
             df_a_exportar = df_resultados
-            nombre_archivo = "Cotizaciones_Completas_Latitud_Solar.pdf"
+            nombre_archivo = f"Todos_los_proyectos_{mes_seleccionado}.pdf"
+            
+            pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar, tipo_exportacion="todos", mes=mes_seleccionado)
         else:
             lista_a_exportar = [p for p in st.session_state.proyectos if p["Proyecto"] == seleccion_descarga]
             df_a_exportar = df_resultados[df_resultados["Proyecto"] == seleccion_descarga]
             nombre_archivo = f"Cotizacion_{seleccion_descarga.replace(' ', '_')}.pdf"
             
-        pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar)
-        
+            pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar, tipo_exportacion="individual")
+            
         st.download_button(
-            label=f"📄 Descargar ({seleccion_descarga})",
+            label=f"📄 Descargar",
             data=pdf_generado,
             file_name=nombre_archivo,
             mime="application/pdf",
