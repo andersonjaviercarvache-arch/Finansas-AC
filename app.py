@@ -198,10 +198,9 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             pdf.ln(3)
             
-            # Incorporación del campo Traslado de Equipos (Usando .get para compatibilidad con data antigua)
             pdf.set_font("Helvetica", '', 9)
             pdf.cell(0, 6, f"Materiales y Otros Costos: ${p.get('_Materiales', 0.0):,.2f}", new_x="LMARGIN", new_y="NEXT")
-            pdf.cell(0, 6, f"Traslado de Equipos: ${p.get('_Traslado', 0.0):,.2f}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 6, f"Traslado de Equipos (Global): ${p.get('_Traslado', 0.0):,.2f}", new_x="LMARGIN", new_y="NEXT")
             pdf.ln(6)
             
             pdf.set_font("Helvetica", 'B', 12)
@@ -475,25 +474,28 @@ with tab_registro:
             }
         else: 
             st.markdown("##### 🏙️ Parámetros Locales (Variables Mixtas)")
-            col_dentro1, col_dentro2, col_dentro3 = st.columns(3)
+            col_dentro1, col_dentro2, col_dentro3, col_dentro4 = st.columns(4)
             with col_dentro1:
-                alim_costo_in = st.number_input("Alimentación Grupal/Día", min_value=0.0, value=15.0, key="alim_c_in")
+                alim_costo_in = st.number_input("Alim. Grupal/Día", min_value=0.0, value=15.0, key="alim_c_in")
                 alim_dias_in = st.number_input("Días aplicables", min_value=0, value=dias_trabajo, key="alim_d_in")
             with col_dentro2:
-                mov_total_in = st.number_input("Movilización Fija (Global)", min_value=0.0, value=25.0, key="mov_total_in")
+                mov_total_in = st.number_input("Mov. Personal (Global)", min_value=0.0, value=25.0, key="mov_total_in")
             with col_dentro3:
                 visita_config_in = st.number_input("Visita Técnica (Global)", min_value=0.0, value=30.0, key="vis_config_in")
+            with col_dentro4:
+                fletes_in = st.number_input("Fletes dentro ciudad", min_value=0.0, value=0.0, key="fletes_in")
 
             personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
             num_personas = len(personal_activo)
             
             total_alimentacion_in = alim_costo_in * alim_dias_in * num_personas
-            costo_viaticos_total = total_alimentacion_in + mov_total_in + visita_config_in
+            costo_viaticos_total = total_alimentacion_in + mov_total_in + visita_config_in + fletes_in
             
             dict_viaticos_guardar = {
                 "Alimentación": {"costo": alim_costo_in, "dias": alim_dias_in, "tipo": "por_persona"},
-                "Movilización (Individual)": {"costo": mov_total_in, "dias": 1, "tipo": "individual"},
-                "Visita de Configuración (Individual)": {"costo": visita_config_in, "dias": 1, "tipo": "individual"}
+                "Movilización Personal": {"costo": mov_total_in, "dias": 1, "tipo": "individual"},
+                "Visita Técnica": {"costo": visita_config_in, "dias": 1, "tipo": "individual"},
+                "Fletes": {"costo": fletes_in, "dias": 1, "tipo": "individual"}
             }
 
     st.markdown("### 🛠️ Materiales, Equipos y Logística Extra")
@@ -502,7 +504,7 @@ with tab_registro:
     with col_mat1:
         costo_materiales = st.number_input("Costo Bruto Suministros / Subcontratos ($)", min_value=0.0, value=0.0, step=50.0)
     with col_mat2:
-        costo_traslado = st.number_input("Traslado de Equipos ($)", min_value=0.0, value=0.0, step=50.0)
+        costo_traslado = st.number_input("Traslado de Equipos (Global - Fuera de Ciudad) ($)", min_value=0.0, value=0.0, step=50.0)
 
     st.write("---")
     st.markdown("### 📈 Simulación y Precios")
