@@ -25,7 +25,7 @@ st.markdown("""
     
     /* Tarjetas de Métricas (KPIs) adaptables al tema del usuario */
     div[data-testid="stMetric"] {
-        background-color: var(--secondary-background-color); /* Automático: Blanco en modo claro, Gris oscuro en modo oscuro */
+        background-color: var(--secondary-background-color); 
         border-radius: 6px;
         padding: 15px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -35,7 +35,7 @@ st.markdown("""
     /* Título principal adaptable */
     .titulo-dashboard {
         text-align: center;
-        color: var(--text-color); /* Se pone blanco en modo oscuro y negro en modo claro */
+        color: var(--text-color); 
         margin-bottom: 0;
     }
     
@@ -329,8 +329,9 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
     os.remove(temp_file)
     return pdf_bytes
 
+
 # =========================================================================
-# --- INTERFAZ PRINCIPAL CON PESTAÑAS ---
+# --- INTERFAZ PRINCIPAL CON PESTAÑAS MODERNAS ---
 # =========================================================================
 
 tab_dashboard, tab_registro, tab_reportes = st.tabs(["📊 Dashboard Analítico", "✍️ Cargar Operación", "📑 Informes y Exportación"])
@@ -381,7 +382,7 @@ with tab_dashboard:
                 xaxis_title="", yaxis_title="",
                 legend_title="", hovermode="x unified", margin=dict(l=0, r=0, t=20, b=0)
             )
-            # Desactivar la barra de herramientas molesta (zoom, descarga, etc.)
+            # Desactivar la barra de herramientas interactiva molesta
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
         with col_graf2:
@@ -391,13 +392,14 @@ with tab_dashboard:
                 "Monto": [t_costo, t_iva, t_ganancia]
             })
             
-            # Gráfico de dona con la paleta Azul / Naranja (para contraste del IVA)
+            # Gráfico de dona con la paleta Azul / Naranja
             fig_donut = px.pie(df_pie, values='Monto', names='Categoría', hole=0.6,
                                color='Categoría',
                                color_discrete_map={"Costo Operativo": "#aec7e8", "IVA Retenido": "#ff7f0e", "Utilidad Neta": "#1f77b4"})
             
             fig_donut.update_layout(margin=dict(l=0, r=0, t=20, b=0), showlegend=True, 
                                     legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
+            # Desactivar la barra de herramientas interactiva molesta
             st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
 
     else:
@@ -443,33 +445,39 @@ with tab_registro:
         dict_viaticos_guardar = {}
         
         if tipo_ubicacion == "Fuera de la ciudad":
+            st.markdown("##### 🛣️ Parámetros Foráneos (Por Persona)")
             col_v1, col_v2, col_v3, col_v4 = st.columns(4)
             with col_v1:
-                alim_costo = st.number_input("Alimentación/Día", min_value=0.0, value=15.0, key="alim_c_out")
-                alim_dias = st.number_input("Días", min_value=0, value=dias_trabajo, key="alim_d_out")
+                alim_costo = st.number_input("Alimentación/Día ($)", min_value=0.0, value=15.0, key="alim_c_out")
+                alim_dias = st.number_input("Días Alimentación", min_value=0, value=dias_trabajo, key="alim_d_out")
             with col_v2:
-                mov_costo = st.number_input("Pasajes/Día", min_value=0.0, value=15.0, key="mov_c_out")
-                mov_dias = st.number_input("Días ", min_value=0, value=dias_trabajo, key="mov_d_out")
+                mov_costo = st.number_input("Pasajes/Día ($)", min_value=0.0, value=15.0, key="mov_c_out")
+                mov_dias = st.number_input("Días Movilización", min_value=0, value=dias_trabajo, key="mov_d_out")
             with col_v3:
-                hidra_costo = st.number_input("Hidratación/Día", min_value=0.0, value=10.0, key="hidra_c_out")
-                hidra_dias = st.number_input("Días  ", min_value=0, value=dias_trabajo, key="hidra_d_out")
+                hidra_costo = st.number_input("Hidratación/Día ($)", min_value=0.0, value=10.0, key="hidra_c_out")
+                hidra_dias = st.number_input("Días Hidratación", min_value=0, value=dias_trabajo, key="hidra_d_out")
             with col_v4:
-                hosp_costo = st.number_input("Hospedaje/Noche", min_value=0.0, value=20.0, key="hosp_c_out")
-                hosp_dias = st.number_input("Noches", min_value=0, value=max(0, dias_trabajo - 1), key="hosp_d_out")
+                hosp_costo = st.number_input("Hospedaje/Noche ($)", min_value=0.0, value=20.0, key="hosp_c_out")
+                hosp_dias = st.number_input("Noches Hotel", min_value=0, value=max(0, dias_trabajo - 1), key="hosp_d_out")
+
+            st.markdown("##### 🔧 Costos Fijos Adicionales (Global)")
+            visita_tecnica_out = st.number_input("Visita Técnica / Configuración ($)", min_value=0.0, value=30.0, key="vis_tec_out")
 
             personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
             num_personas = len(personal_activo)
             
             viatico_total_pp = (alim_costo * alim_dias) + (mov_costo * mov_dias) + (hidra_costo * hidra_dias) + (hosp_costo * hosp_dias)
-            costo_viaticos_total = viatico_total_pp * num_personas
+            costo_viaticos_total = (viatico_total_pp * num_personas) + visita_tecnica_out
             
             dict_viaticos_guardar = {
                 "Alimentación": {"costo": alim_costo, "dias": alim_dias, "tipo": "por_persona"},
                 "Movilización": {"costo": mov_costo, "dias": mov_dias, "tipo": "por_persona"},
                 "Hidratación": {"costo": hidra_costo, "dias": hidra_dias, "tipo": "por_persona"},
-                "Hospedaje": {"costo": hosp_costo, "dias": hosp_dias, "tipo": "por_persona"}
+                "Hospedaje": {"costo": hosp_costo, "dias": hosp_dias, "tipo": "por_persona"},
+                "Visita Técnica (Global)": {"costo": visita_tecnica_out, "dias": 1, "tipo": "individual"}
             }
         else: 
+            st.markdown("##### 🏙️ Parámetros Locales (Variables Mixtas)")
             col_dentro1, col_dentro2, col_dentro3 = st.columns(3)
             with col_dentro1:
                 alim_costo_in = st.number_input("Alimentación Grupal/Día", min_value=0.0, value=15.0, key="alim_c_in")
@@ -618,10 +626,10 @@ with tab_reportes:
                 st.download_button(label="📄 Descargar Formato PDF", data=pdf_individual, file_name=nombre_archivo, mime="application/pdf", type="primary")
 
         st.write("---")
-        with st.expander("⚙️ Eliminar Registros"):
+        with st.expander("⚙️ Gestión y Depuración de Registros"):
             nombres_proyectos_del = [p["Proyecto"] for p in st.session_state.proyectos]
             proyecto_a_eliminar = st.selectbox("Selecciona para borrar:", nombres_proyectos_del, key="del_proj_box")
-            if st.button("🗑️ Eliminar"):
+            if st.button("🗑️ Eliminar Definitivamente"):
                 st.session_state.proyectos = [p for p in st.session_state.proyectos if p["Proyecto"] != proyecto_a_eliminar]
                 guardar_en_base_de_datos(st.session_state.proyectos)
                 st.warning("Eliminado.")
