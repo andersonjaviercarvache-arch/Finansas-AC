@@ -16,7 +16,7 @@ st.header("Registrar Nuevo Proyecto")
 
 col_info, col_dias = st.columns(2)
 nombre_proyecto = col_info.text_input("Nombre del Proyecto")
-dias_trabajo = col_dias.number_input("Días de Trabajo en Obra", min_value=1, value=4)
+dias_trabajo = col_dias.number_input("Días de Trabajo en Obra (Personal)", min_value=1, value=4)
 
 st.write("---")
 
@@ -33,14 +33,34 @@ df_personal_editado = st.data_editor(df_personal_base, use_container_width=True,
 
 st.write("---")
 
-st.subheader("2. Desglose de Viáticos Diarios (Por Persona)")
-col_v1, col_v2, col_v3 = st.columns(3)
-alim = col_v1.number_input("Alimentación ($)", min_value=0.0, value=15.0)
-mov = col_v2.number_input("Movilización ($)", min_value=0.0, value=15.0)
-hidra = col_v3.number_input("Hidratación ($)", min_value=0.0, value=10.0)
+# --- NUEVA SECCIÓN DE VIÁTICOS INDEPENDIENTES ---
+st.subheader("2. Desglose de Viáticos (Por Persona)")
+st.write("Ingresa el valor diario y cuántos días aplica cada rubro (por defecto toma los días de la obra).")
 
-viatico_diario_pp = alim + mov + hidra
-st.info(f"**Total viáticos diarios por persona:** ${viatico_diario_pp:.2f}")
+col_v1, col_v2, col_v3 = st.columns(3)
+
+with col_v1:
+    st.markdown("**Alimentación**")
+    alim_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=15.0, key="alim_c")
+    alim_dias = st.number_input("Días", min_value=0, value=dias_trabajo, key="alim_d")
+
+with col_v2:
+    st.markdown("**Movilización**")
+    mov_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=15.0, key="mov_c")
+    mov_dias = st.number_input("Días", min_value=0, value=dias_trabajo, key="mov_d")
+
+with col_v3:
+    st.markdown("**Hidratación**")
+    hidra_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=10.0, key="hidra_c")
+    hidra_dias = st.number_input("Días", min_value=0, value=dias_trabajo, key="hidra_d")
+
+# Cálculo individual por rubro
+total_alim_pp = alim_costo * alim_dias
+total_mov_pp = mov_costo * mov_dias
+total_hidra_pp = hidra_costo * hidra_dias
+
+viatico_total_pp = total_alim_pp + total_mov_pp + total_hidra_pp
+st.info(f"**Total acumulado de viáticos por cada persona (durante toda la obra):** ${viatico_total_pp:.2f}")
 
 st.write("---")
 
@@ -59,8 +79,9 @@ pct_ganancia = col_pct2.slider("Porcentaje de Ganancia (%)", min_value=0, max_va
 personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
 num_personas = len(personal_activo)
 
+# Nómina = días generales de la obra. Viáticos = usan sus propios días multiplicados por la cantidad de personas.
 costo_mano_obra = personal_activo["Costo Día ($)"].sum() * dias_trabajo
-costo_viaticos_total = viatico_diario_pp * num_personas * dias_trabajo
+costo_viaticos_total = viatico_total_pp * num_personas
 costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
 
 reserva_imprevistos = costo_directo * (pct_imprevistos / 100)
@@ -80,7 +101,7 @@ st.success(f"**PRECIO DE VENTA FINAL:** ${precio_venta_final:,.2f}  |  **IVA (15
 
 if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
-        # Guardar todo el detalle para el PDF
+        # Guardar todo el detalle para el PDF, ahora incluyendo los días específicos de los viáticos
         st.session_state.proyectos.append({
             "Proyecto": nombre_proyecto,
             "Costo Directo": costo_directo,
@@ -89,10 +110,13 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
             "PRECIO VENTA FINAL": precio_venta_final,
             "IVA (15%)": iva_monto,
             "PRECIO TOTAL": precio_total_con_iva,
-            # Campos ocultos para el detalle del PDF
             "_Dias": dias_trabajo,
             "_Personal": personal_activo.to_dict('records'),
-            "_Viaticos": {"Alimentación": alim, "Movilización": mov, "Hidratación": hidra},
+            "_Viaticos": {
+                "Alimentación": {"costo": alim_costo, "dias": alim_dias},
+                "Movilización": {"costo": mov_costo, "dias": mov_dias},
+                "Hidratación": {"costo": hidra_costo, "dias": hidra_dias}
+            },
             "_Materiales": costo_materiales
         })
         st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente.")
@@ -104,7 +128,7 @@ st.write("---")
 st.header("Reporte Mensual y Cotizaciones")
 
 if st.session_state.proyectos:
-    # Crear DataFrame solo con las columnas públicas (sin el guión bajo)
+    # Crear DataFrame solo con las columnas públicas
     datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
     df_resultados = pd.DataFrame(datos_publicos)
     
@@ -141,7 +165,7 @@ if st.session_state.proyectos:
         pdf.set_font("Helvetica", 'I', 10)
         pdf.cell(0, 10, "Nota: Los valores incluyen mano de obra, viáticos y equipos acordados.", new_x="LMARGIN", new_y="NEXT", align='C')
         
-        # --- PÁGINA 2: REPORTE INTERNO (Resumen general) ---
+        # --- PÁGINA 2: REPORTE INTERNO ---
         pdf.add_page()
         pdf.set_font("Helvetica", 'B', 16)
         pdf.cell(0, 10, "REPORTE INTERNO DE RENTABILIDAD", new_x="LMARGIN", new_y="NEXT", align='C')
@@ -166,7 +190,7 @@ if st.session_state.proyectos:
             pdf.cell(30, 10, f"${row[col_ganancia]:,.2f}", border=1, align='R')
             pdf.cell(35, 10, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
 
-        # --- PÁGINA 3+: ANEXO DETALLADO DE COSTOS POR PROYECTO ---
+        # --- PÁGINA 3+: ANEXO DETALLADO ---
         pdf.add_page()
         pdf.set_font("Helvetica", 'B', 16)
         pdf.cell(0, 10, "ANEXO: DESGLOSE DETALLADO DE COSTOS OPERATIVOS", new_x="LMARGIN", new_y="NEXT", align='C')
@@ -174,7 +198,7 @@ if st.session_state.proyectos:
 
         for p in lista_proyectos:
             pdf.set_font("Helvetica", 'B', 12)
-            pdf.cell(0, 10, f"Proyecto: {p['Proyecto']} (Duración: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
+            pdf.cell(0, 10, f"Proyecto: {p['Proyecto']} (Duración Obra: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
             
             # Tabla 1: Personal
             pdf.set_font("Helvetica", 'B', 10)
@@ -194,21 +218,23 @@ if st.session_state.proyectos:
             
             pdf.ln(5)
             
-            # Tabla 2: Viáticos
+            # Tabla 2: Viáticos (Actualizada con los días específicos)
             pdf.set_font("Helvetica", 'B', 10)
             pdf.cell(0, 8, "Desglose de Viáticos (Calculado para todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
             
             pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(60, 8, "Concepto", border=1)
-            pdf.cell(40, 8, "Asignación Diaria (c/u)", border=1)
+            pdf.cell(45, 8, "Concepto", border=1)
+            pdf.cell(35, 8, "Diario (c/u)", border=1, align='C')
+            pdf.cell(20, 8, "Días", border=1, align='C')
             pdf.cell(50, 8, "Costo Total del Grupo", border=1, new_x="LMARGIN", new_y="NEXT")
             
             pdf.set_font("Helvetica", '', 9)
             num_personas = len(p["_Personal"])
-            for concepto, valor in p["_Viaticos"].items():
-                total_concepto = valor * num_personas * p["_Dias"]
-                pdf.cell(60, 8, concepto, border=1)
-                pdf.cell(40, 8, f"${valor:,.2f}", border=1, align='C')
+            for concepto, datos in p["_Viaticos"].items():
+                total_concepto = datos["costo"] * datos["dias"] * num_personas
+                pdf.cell(45, 8, concepto, border=1)
+                pdf.cell(35, 8, f"${datos['costo']:,.2f}", border=1, align='C')
+                pdf.cell(20, 8, str(datos['dias']), border=1, align='C')
                 pdf.cell(50, 8, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             
             pdf.ln(5)
