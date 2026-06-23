@@ -198,7 +198,6 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             pdf.ln(3)
             
-            # Soporte para registros guardados antes de esta actualización (evita errores en datos viejos)
             if p.get('_Traslado', 0.0) > 0 and "Traslado de Equipos" not in p["_Viaticos"]:
                 pdf.set_font("Helvetica", '', 9)
                 pdf.cell(0, 6, f"Traslado de Equipos (Histórico): ${p.get('_Traslado', 0.0):,.2f}", new_x="LMARGIN", new_y="NEXT")
@@ -316,4 +315,336 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
         
         pdf.set_font("Helvetica", 'B', 9)
         pdf.cell(55, 6, " TOTAL INGRESOS GENERALES:", border=1)
-        pdf.cell(40, 6, f"${sum_venta
+        pdf.cell(40, 6, f"${sum_venta:,.2f} ", border=1, align='R')
+        
+        total_egresos_todos = sum_costo + sum_imprev
+        pdf.cell(55, 6, " TOTAL INVERSIÓN LOGÍSTICA:", border=1)
+        pdf.cell(40, 6, f"${total_egresos_todos:,.2f} ", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+        
+        pdf.ln(2)
+        pdf.set_font("Helvetica", 'B', 10)
+        pdf.cell(130, 8, " RESULTADO / BALANCE NETO TOTAL:", border=1, align='R')
+        pdf.cell(60, 8, f"${sum_ganancia:,.2f} ", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+
+    temp_file = "temp_report.pdf"
+    pdf.output(temp_file)
+    with open(temp_file, "rb") as f:
+        pdf_bytes = f.read()
+    os.remove(temp_file)
+    return pdf_bytes
+
+# =========================================================================
+# --- INTERFAZ PRINCIPAL CON PESTAÑAS MODERNAS ---
+# =========================================================================
+
+tab_dashboard, tab_registro, tab_reportes = st.tabs(["📊 Dashboard Analítico", "✍️ Cargar Operación", "📑 Informes y Exportación"])
+
+# -------------------------------------------------------------------------
+# PESTAÑA 1: DASHBOARD INTERACTIVO (PLOTLY SIN MODEBAR)
+# -------------------------------------------------------------------------
+with tab_dashboard:
+    if st.session_state.proyectos:
+        st.markdown("### Resumen Financiero General")
+        
+        df_global = pd.DataFrame([{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]).fillna(0)
+        df_global["Costo Operativo"] = df_global["Costo Directo"] + df_global["Fondo Imprevistos"]
+        
+        resumen_mensual = df_global.groupby("Mes")[["Costo Operativo", "Ganancia Neta", "IVA (15%)", "PRECIO TOTAL", "PRECIO VENTA FINAL"]].sum().reset_index()
+        resumen_mensual["Mes_Num"] = resumen_mensual["Mes"].apply(lambda x: meses_lista.index(x) if x in meses_lista else 99)
+        resumen_mensual = resumen_mensual.sort_values("Mes_Num").drop("Mes_Num", axis=1)
+        
+        t_costo = resumen_mensual["Costo Operativo"].sum()
+        t_ganancia = resumen_mensual["Ganancia Neta"].sum()
+        t_iva = resumen_mensual["IVA (15%)"].sum()
+        t_facturado = resumen_mensual["PRECIO TOTAL"].sum()
+        
+        col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+        col_kpi1.metric("Facturación Total", f"${t_facturado:,.2f}")
+        col_kpi2.metric("Inversión / Costos", f"${t_costo:,.2f}")
+        col_kpi3.metric("Utilidad Neta", f"${t_ganancia:,.2f}")
+        col_kpi4.metric("IVA Acumulado", f"${t_iva:,.2f}")
+        
+        st.write("---")
+        
+        col_graf1, col_graf2 = st.columns([2, 1])
+        
+        with col_graf1:
+            st.markdown("#### Ingresos vs Egresos (Mensual)")
+            
+            df_bar = resumen_mensual.melt(id_vars=["Mes"], value_vars=["PRECIO VENTA FINAL", "Costo Operativo"], 
+                                          var_name="Indicador", value_name="Monto")
+            df_bar["Indicador"] = df_bar["Indicador"].replace({"PRECIO VENTA FINAL": "Ingresos", "Costo Operativo": "Costos"})
+            
+            fig_bar = px.bar(df_bar, x="Mes", y="Monto", color="Indicador", barmode="group",
+                             color_discrete_map={"Ingresos": "#1f77b4", "Costos": "#aec7e8"},
+                             text_auto='.2s')
+            
+            fig_bar.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                xaxis_title="", yaxis_title="",
+                legend_title="", hovermode="x unified", margin=dict(l=0, r=0, t=20, b=0)
+            )
+            st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+
+        with col_graf2:
+            st.markdown("#### Distribución de Costos y Ganancias")
+            df_pie = pd.DataFrame({
+                "Categoría": ["Costo Operativo", "IVA Retenido", "Utilidad Neta"],
+                "Monto": [t_costo, t_iva, t_ganancia]
+            })
+            
+            fig_donut = px.pie(df_pie, values='Monto', names='Categoría', hole=0.6,
+                               color='Categoría',
+                               color_discrete_map={"Costo Operativo": "#aec7e8", "IVA Retenido": "#ff7f0e", "Utilidad Neta": "#1f77b4"})
+            
+            fig_donut.update_layout(margin=dict(l=0, r=0, t=20, b=0), showlegend=True, 
+                                    legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
+            st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
+
+    else:
+        st.info("Aún no hay datos suficientes para generar los gráficos. Registra un proyecto primero.")
+
+# -------------------------------------------------------------------------
+# PESTAÑA 2: REGISTRAR PROYECTO
+# -------------------------------------------------------------------------
+with tab_registro:
+    st.markdown("### 📝 Cargar Nueva Operación")
+    
+    with st.container():
+        col_info, col_dias, col_mes, col_anio, col_fecha = st.columns([2, 1, 1, 1, 1])
+        nombre_proyecto = col_info.text_input("Nombre / Referencia", placeholder="Ej: Proyecto Norte")
+        dias_trabajo = col_dias.number_input("Días Previstos", min_value=1, value=4)
+        
+        mes_actual_idx = datetime.date.today().month - 1
+        mes_proyecto = col_mes.selectbox("Mes Contable", meses_lista, index=mes_actual_idx)
+        anio_proyecto = col_anio.number_input("Año", min_value=2020, value=datetime.date.today().year)
+        fecha_obra = col_fecha.date_input("Fecha Exacta", value=datetime.date.today())
+
+    st.write("") 
+
+    with st.expander("👥 Configuración de Mano de Obra (Hasta 10)", expanded=False):
+        df_personal_base = pd.DataFrame([
+            {"Rol": "Supervisor", "Costo Día ($)": 50.00, "Asignado": True},
+            {"Rol": "Técnico 1", "Costo Día ($)": 37.50, "Asignado": True},
+            {"Rol": "Técnico 2", "Costo Día ($)": 37.50, "Asignado": True},
+            {"Rol": "Técnico 3", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 4", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 5", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 6", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 7", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 8", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Ayudante", "Costo Día ($)": 25.00, "Asignado": False}
+        ])
+        df_personal_editado = st.data_editor(df_personal_base, use_container_width=True, hide_index=True)
+
+    with st.expander("🚗 Viáticos y Logística", expanded=False):
+        tipo_ubicacion = st.selectbox("Ubicación", ["Fuera de la ciudad", "Dentro de la ciudad"])
+        
+        costo_viaticos_total = 0.0
+        dict_viaticos_guardar = {}
+        
+        if tipo_ubicacion == "Fuera de la ciudad":
+            st.markdown("##### 🛣️ Parámetros Foráneos (Por Persona)")
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+            with col_v1:
+                alim_costo = st.number_input("Alimentación/Día ($)", min_value=0.0, value=15.0, key="alim_c_out")
+                alim_dias = st.number_input("Días Alimentación", min_value=0, value=dias_trabajo, key="alim_d_out")
+            with col_v2:
+                mov_costo = st.number_input("Pasajes/Día ($)", min_value=0.0, value=15.0, key="mov_c_out")
+                mov_dias = st.number_input("Días Movilización", min_value=0, value=dias_trabajo, key="mov_d_out")
+            with col_v3:
+                hidra_costo = st.number_input("Hidratación/Día ($)", min_value=0.0, value=10.0, key="hidra_c_out")
+                hidra_dias = st.number_input("Días Hidratación", min_value=0, value=dias_trabajo, key="hidra_d_out")
+            with col_v4:
+                hosp_costo = st.number_input("Hospedaje/Noche ($)", min_value=0.0, value=20.0, key="hosp_c_out")
+                hosp_dias = st.number_input("Noches Hotel", min_value=0, value=max(0, dias_trabajo - 1), key="hosp_d_out")
+
+            st.markdown("##### 🔧 Costos Fijos Adicionales (Global)")
+            visita_tecnica_out = st.number_input("Visita Técnica / Configuración ($)", min_value=0.0, value=30.0, key="vis_tec_out")
+
+            personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
+            num_personas = len(personal_activo)
+            
+            viatico_total_pp = (alim_costo * alim_dias) + (mov_costo * mov_dias) + (hidra_costo * hidra_dias) + (hosp_costo * hosp_dias)
+            costo_viaticos_total = (viatico_total_pp * num_personas) + visita_tecnica_out
+            
+            dict_viaticos_guardar = {
+                "Alimentación": {"costo": alim_costo, "dias": alim_dias, "tipo": "por_persona"},
+                "Movilización": {"costo": mov_costo, "dias": mov_dias, "tipo": "por_persona"},
+                "Hidratación": {"costo": hidra_costo, "dias": hidra_dias, "tipo": "por_persona"},
+                "Hospedaje": {"costo": hosp_costo, "dias": hosp_dias, "tipo": "por_persona"},
+                "Visita Técnica (Global)": {"costo": visita_tecnica_out, "dias": 1, "tipo": "individual"}
+            }
+        else: 
+            st.markdown("##### 🏙️ Parámetros Locales (Variables Mixtas)")
+            col_dentro1, col_dentro2, col_dentro3, col_dentro4 = st.columns(4)
+            with col_dentro1:
+                alim_costo_in = st.number_input("Alim. Grupal/Día", min_value=0.0, value=15.0, key="alim_c_in")
+                alim_dias_in = st.number_input("Días aplicables", min_value=0, value=dias_trabajo, key="alim_d_in")
+            with col_dentro2:
+                mov_total_in = st.number_input("Mov. Personal (Global)", min_value=0.0, value=25.0, key="mov_total_in")
+            with col_dentro3:
+                visita_config_in = st.number_input("Visita Técnica (Global)", min_value=0.0, value=30.0, key="vis_config_in")
+            with col_dentro4:
+                fletes_in = st.number_input("Fletes dentro ciudad", min_value=0.0, value=0.0, key="fletes_in")
+
+            personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
+            num_personas = len(personal_activo)
+            
+            total_alimentacion_in = alim_costo_in * alim_dias_in * num_personas
+            costo_viaticos_total = total_alimentacion_in + mov_total_in + visita_config_in + fletes_in
+            
+            dict_viaticos_guardar = {
+                "Alimentación": {"costo": alim_costo_in, "dias": alim_dias_in, "tipo": "por_persona"},
+                "Movilización Personal": {"costo": mov_total_in, "dias": 1, "tipo": "individual"},
+                "Visita Técnica": {"costo": visita_config_in, "dias": 1, "tipo": "individual"},
+                "Fletes": {"costo": fletes_in, "dias": 1, "tipo": "individual"}
+            }
+
+    st.markdown("### 🛠️ Materiales, Equipos y Logística Extra")
+    
+    col_mat1, col_mat2 = st.columns(2)
+    with col_mat1:
+        costo_materiales = st.number_input("Costo Bruto Suministros / Subcontratos ($)", min_value=0.0, value=0.0, step=50.0)
+    with col_mat2:
+        costo_traslado = st.number_input("Traslado de Equipos (Global - Fuera de Ciudad) ($)", min_value=0.0, value=0.0, step=50.0)
+        
+    # Integración del costo de traslado a la estructura general del costo operativo para el PDF
+    if costo_traslado > 0:
+        dict_viaticos_guardar["Traslado de Equipos"] = {"costo": costo_traslado, "dias": 1, "tipo": "individual"}
+        costo_viaticos_total += costo_traslado
+
+    st.write("---")
+    st.markdown("### 📈 Simulación y Precios")
+    
+    col_pct1, col_pct2 = st.columns(2)
+    pct_imprevistos = col_pct1.slider("Imprevistos (%)", min_value=0, max_value=100, value=20, step=5)
+    pct_ganancia_sugerida = col_pct2.slider("Margen de Utilidad (%)", min_value=0, max_value=100, value=40, step=5)
+
+    costo_mano_obra = personal_activo["Costo Día ($)"].sum() * dias_trabajo
+    costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
+    
+    reserva_imprevistos = costo_directo * (pct_imprevistos / 100)
+    ganancia_calculada = costo_directo * (pct_ganancia_sugerida / 100)
+    precio_sugerido = costo_directo + reserva_imprevistos + ganancia_calculada
+
+    precio_venta_final = st.number_input(
+        f"Ajuste Precio a Facturar (Sugerido: ${precio_sugerido:,.2f})", 
+        min_value=0.0, 
+        value=float(precio_sugerido), 
+        step=10.0
+    )
+
+    ganancia_real = precio_venta_final - costo_directo - reserva_imprevistos
+    iva_monto = precio_venta_final * 0.15
+    precio_total_con_iva = precio_venta_final + iva_monto
+
+    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+    col_s1.metric("Costo Ejecutado", f"${costo_directo:,.2f}")
+    col_s2.metric("Fondo Contingencia", f"${reserva_imprevistos:,.2f}")
+    col_s3.metric("Utilidad Neta", f"${ganancia_real:,.2f}")
+    col_s4.metric("Facturación Base", f"${precio_venta_final:,.2f}")
+    
+    st.write("")
+    
+    c_btn1, c_btn2, c_btn3 = st.columns([1,2,1])
+    with c_btn2:
+        if st.button("💾 REGISTRAR OPERACIÓN", type="primary", use_container_width=True):
+            if nombre_proyecto:
+                nombres_existentes = [p["Proyecto"] for p in st.session_state.proyectos]
+                if nombre_proyecto in nombres_existentes:
+                    st.error("Error: Obra ya registrada. Usa un ID único.")
+                else:
+                    st.session_state.proyectos.append({
+                        "Año": anio_proyecto,
+                        "Mes": mes_proyecto,
+                        "Fecha": fecha_obra.strftime("%d/%m/%Y"), 
+                        "Proyecto": nombre_proyecto,
+                        "Costo Directo": costo_directo,
+                        "Fondo Imprevistos": reserva_imprevistos, 
+                        "Ganancia Neta": ganancia_real,           
+                        "PRECIO VENTA FINAL": precio_venta_final,
+                        "IVA (15%)": iva_monto,
+                        "PRECIO TOTAL": precio_total_con_iva,
+                        "_Dias": dias_trabajo,
+                        "_Personal": personal_activo.to_dict('records'),
+                        "_Tipo_Ubicacion": tipo_ubicacion,
+                        "_Viaticos": dict_viaticos_guardar,
+                        "_Materiales": costo_materiales
+                    })
+                    guardar_en_base_de_datos(st.session_state.proyectos)
+                    st.success("✅ Guardado Exitosamente.")
+                    st.rerun()
+            else:
+                st.error("⚠️ Nombre requerido.")
+
+# -------------------------------------------------------------------------
+# PESTAÑA 3: INFORMES Y EXTRACCIÓN
+# -------------------------------------------------------------------------
+with tab_reportes:
+    if st.session_state.proyectos:
+        datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
+        df_resultados = pd.DataFrame(datos_publicos).fillna(0)
+        
+        columnas_ordenadas = ["Año", "Mes", "Fecha", "Proyecto", "Costo Directo", "Fondo Imprevistos", "Ganancia Neta", "PRECIO VENTA FINAL", "IVA (15%)", "PRECIO TOTAL"]
+        df_resultados = df_resultados[[col for col in columnas_ordenadas if col in df_resultados.columns]]
+        formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col not in ["Mes", "Proyecto", "Año", "Fecha"]}
+
+        st.markdown("### Informes de Facturación y Actividad")
+        
+        tipo_reporte = st.radio(
+            "Filtro de Exportación:",
+            ["Mes Específico", "Histórico Anual", "Documento de Proyecto"],
+            horizontal=True
+        )
+        st.write("---")
+
+        col_rep1, col_rep2 = st.columns([1, 2])
+
+        if tipo_reporte == "Mes Específico":
+            with col_rep1:
+                meses_disponibles = list(set([p["Mes"] for p in st.session_state.proyectos]))
+                meses_ordenados = sorted(meses_disponibles, key=lambda x: meses_lista.index(x))
+                mes_seleccionado = st.selectbox("Selecciona Mes:", meses_ordenados)
+                
+            with col_rep2:
+                lista_a_exportar = [p for p in st.session_state.proyectos if p["Mes"] == mes_seleccionado]
+                df_a_exportar = df_resultados[df_resultados["Mes"] == mes_seleccionado]
+                st.dataframe(df_a_exportar.style.format(formato_moneda), use_container_width=True, hide_index=True)
+                
+                titulo_doc = f"REPORTE INTERNO DE CONTABILIDAD - {mes_seleccionado.upper()}"
+                nombre_archivo = f"Balance_{mes_seleccionado}.pdf"
+                pdf_mes = generar_pdf(lista_a_exportar, df_a_exportar, tipo_exportacion="todos", titulo_reporte=titulo_doc)
+                st.download_button(label="📥 Descargar PDF", data=pdf_mes, file_name=nombre_archivo, mime="application/pdf", type="primary")
+
+        elif tipo_reporte == "Histórico Anual":
+            st.dataframe(df_resultados.style.format(formato_moneda), use_container_width=True, hide_index=True)
+            titulo_doc = "REPORTE INTERNO DE CONTABILIDAD ENERO A DICIEMBRE"
+            pdf_anual = generar_pdf(st.session_state.proyectos, df_resultados, tipo_exportacion="todos", titulo_reporte=titulo_doc)
+            st.download_button(label="📥 Descargar Histórico PDF", data=pdf_anual, file_name="Historico.pdf", mime="application/pdf", type="primary")
+            
+        elif tipo_reporte == "Documento de Proyecto":
+            with col_rep1:
+                nombres_proyectos = [p["Proyecto"] for p in st.session_state.proyectos]
+                proyecto_seleccionado = st.selectbox("Selecciona Obra:", nombres_proyectos)
+            
+            with col_rep2:
+                lista_a_exportar = [p for p in st.session_state.proyectos if p["Proyecto"] == proyecto_seleccionado]
+                df_a_exportar = df_resultados[df_resultados["Proyecto"] == proyecto_seleccionado]
+                st.dataframe(df_a_exportar.style.format(formato_moneda), use_container_width=True, hide_index=True)
+                
+                nombre_archivo = f"Cotizacion_{proyecto_seleccionado.replace(' ', '_')}.pdf"
+                pdf_individual = generar_pdf(lista_a_exportar, df_a_exportar, tipo_exportacion="individual")
+                st.download_button(label="📄 Descargar Formato PDF", data=pdf_individual, file_name=nombre_archivo, mime="application/pdf", type="primary")
+
+        st.write("---")
+        with st.expander("⚙️ Gestión y Depuración de Registros"):
+            nombres_proyectos_del = [p["Proyecto"] for p in st.session_state.proyectos]
+            proyecto_a_eliminar = st.selectbox("Selecciona para borrar:", nombres_proyectos_del, key="del_proj_box")
+            if st.button("🗑️ Eliminar Definitivamente"):
+                st.session_state.proyectos = [p for p in st.session_state.proyectos if p["Proyecto"] != proyecto_a_eliminar]
+                guardar_en_base_de_datos(st.session_state.proyectos)
+                st.warning("Eliminado.")
+                st.rerun()
+    else:
+        st.info("⚠️ Sin datos.")
