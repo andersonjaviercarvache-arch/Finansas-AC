@@ -80,6 +80,7 @@ st.success(f"**PRECIO DE VENTA FINAL:** ${precio_venta_final:,.2f}  |  **IVA (15
 
 if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
+        # Guardar todo el detalle para el PDF
         st.session_state.proyectos.append({
             "Proyecto": nombre_proyecto,
             "Costo Directo": costo_directo,
@@ -87,7 +88,12 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
             f"Ganancia ({pct_ganancia}%)": ganancia_esperada,
             "PRECIO VENTA FINAL": precio_venta_final,
             "IVA (15%)": iva_monto,
-            "PRECIO TOTAL": precio_total_con_iva
+            "PRECIO TOTAL": precio_total_con_iva,
+            # Campos ocultos para el detalle del PDF
+            "_Dias": dias_trabajo,
+            "_Personal": personal_activo.to_dict('records'),
+            "_Viaticos": {"Alimentación": alim, "Movilización": mov, "Hidratación": hidra},
+            "_Materiales": costo_materiales
         })
         st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente.")
     else:
@@ -98,7 +104,9 @@ st.write("---")
 st.header("Reporte Mensual y Cotizaciones")
 
 if st.session_state.proyectos:
-    df_resultados = pd.DataFrame(st.session_state.proyectos)
+    # Crear DataFrame solo con las columnas públicas (sin el guión bajo)
+    datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
+    df_resultados = pd.DataFrame(datos_publicos)
     
     # Formato visual en pantalla
     formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col != "Proyecto"}
@@ -106,26 +114,23 @@ if st.session_state.proyectos:
     st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
     
     # --- LÓGICA DE EXPORTACIÓN A PDF ---
-    def generar_pdf(df_interno):
+    def generar_pdf(lista_proyectos, df_interno):
         pdf = FPDF()
         
-        # --- PÁGINA 1: COTIZACIÓN CLIENTE (Solo valores finales) ---
+        # --- PÁGINA 1: COTIZACIÓN CLIENTE ---
         pdf.add_page()
         pdf.set_font("Helvetica", 'B', 16)
         pdf.cell(0, 10, "COTIZACIÓN COMERCIAL - LATITUD SOLAR", new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(10)
         
-        # Encabezados de la tabla Cliente
         pdf.set_font("Helvetica", 'B', 11)
         pdf.cell(90, 10, "Descripción del Proyecto", border=1, align='C')
         pdf.cell(35, 10, "Subtotal", border=1, align='C')
         pdf.cell(30, 10, "IVA (15%)", border=1, align='C')
         pdf.cell(35, 10, "Total a Pagar", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
         
-        # Datos de la tabla Cliente
         pdf.set_font("Helvetica", '', 10)
         for _, row in df_interno.iterrows():
-            # Truncar el nombre si es muy largo
             nombre = str(row['Proyecto'])[:45]
             pdf.cell(90, 10, nombre, border=1)
             pdf.cell(35, 10, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, align='R')
@@ -136,17 +141,15 @@ if st.session_state.proyectos:
         pdf.set_font("Helvetica", 'I', 10)
         pdf.cell(0, 10, "Nota: Los valores incluyen mano de obra, viáticos y equipos acordados.", new_x="LMARGIN", new_y="NEXT", align='C')
         
-        # --- PÁGINA 2: REPORTE INTERNO (Confidencial) ---
+        # --- PÁGINA 2: REPORTE INTERNO (Resumen general) ---
         pdf.add_page()
         pdf.set_font("Helvetica", 'B', 16)
-        pdf.cell(0, 10, "REPORTE INTERNO DE RENTABILIDAD (CONFIDENCIAL)", new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.cell(0, 10, "REPORTE INTERNO DE RENTABILIDAD", new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(10)
         
-        # Identificar dinámicamente las columnas de Imprevistos y Ganancias
         col_imprevisto = [c for c in df_interno.columns if "Imprevistos" in c][0]
         col_ganancia = [c for c in df_interno.columns if "Ganancia" in c][0]
         
-        # Encabezados tabla Interna
         pdf.set_font("Helvetica", 'B', 9)
         pdf.cell(60, 10, "Proyecto", border=1, align='C')
         pdf.cell(30, 10, "Costo Directo", border=1, align='C')
@@ -154,7 +157,6 @@ if st.session_state.proyectos:
         pdf.cell(30, 10, "Ganancia Neta", border=1, align='C')
         pdf.cell(35, 10, "Precio de Venta", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
         
-        # Datos de la tabla Interna
         pdf.set_font("Helvetica", '', 9)
         for _, row in df_interno.iterrows():
             nombre = str(row['Proyecto'])[:30]
@@ -163,25 +165,73 @@ if st.session_state.proyectos:
             pdf.cell(35, 10, f"${row[col_imprevisto]:,.2f}", border=1, align='R')
             pdf.cell(30, 10, f"${row[col_ganancia]:,.2f}", border=1, align='R')
             pdf.cell(35, 10, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+
+        # --- PÁGINA 3+: ANEXO DETALLADO DE COSTOS POR PROYECTO ---
+        pdf.add_page()
+        pdf.set_font("Helvetica", 'B', 16)
+        pdf.cell(0, 10, "ANEXO: DESGLOSE DETALLADO DE COSTOS OPERATIVOS", new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.ln(10)
+
+        for p in lista_proyectos:
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.cell(0, 10, f"Proyecto: {p['Proyecto']} (Duración: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
             
-        # Guardar archivo temporalmente
+            # Tabla 1: Personal
+            pdf.set_font("Helvetica", 'B', 10)
+            pdf.cell(0, 8, "Costo de Personal (Asignado a la obra):", new_x="LMARGIN", new_y="NEXT")
+            
+            pdf.set_font("Helvetica", 'B', 9)
+            pdf.cell(60, 8, "Rol", border=1)
+            pdf.cell(40, 8, "Costo Diario por Persona", border=1)
+            pdf.cell(50, 8, "Total Rol (Todos los días)", border=1, new_x="LMARGIN", new_y="NEXT")
+            
+            pdf.set_font("Helvetica", '', 9)
+            for persona in p["_Personal"]:
+                total_rol = persona["Costo Día ($)"] * p["_Dias"]
+                pdf.cell(60, 8, str(persona["Rol"]), border=1)
+                pdf.cell(40, 8, f"${persona['Costo Día ($)']:,.2f}", border=1, align='C')
+                pdf.cell(50, 8, f"${total_rol:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+            
+            pdf.ln(5)
+            
+            # Tabla 2: Viáticos
+            pdf.set_font("Helvetica", 'B', 10)
+            pdf.cell(0, 8, "Desglose de Viáticos (Calculado para todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
+            
+            pdf.set_font("Helvetica", 'B', 9)
+            pdf.cell(60, 8, "Concepto", border=1)
+            pdf.cell(40, 8, "Asignación Diaria (c/u)", border=1)
+            pdf.cell(50, 8, "Costo Total del Grupo", border=1, new_x="LMARGIN", new_y="NEXT")
+            
+            pdf.set_font("Helvetica", '', 9)
+            num_personas = len(p["_Personal"])
+            for concepto, valor in p["_Viaticos"].items():
+                total_concepto = valor * num_personas * p["_Dias"]
+                pdf.cell(60, 8, concepto, border=1)
+                pdf.cell(40, 8, f"${valor:,.2f}", border=1, align='C')
+                pdf.cell(50, 8, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+            
+            pdf.ln(5)
+            # Otros
+            pdf.set_font("Helvetica", '', 10)
+            pdf.cell(0, 8, f"Materiales y Otros Costos: ${p['_Materiales']:,.2f}", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(10)
+            
+        # Generar y retornar PDF
         temp_file = "cotizacion_latitud_solar.pdf"
         pdf.output(temp_file)
         
         with open(temp_file, "rb") as f:
             pdf_bytes = f.read()
-            
-        # Limpieza de archivo temporal
         os.remove(temp_file)
         return pdf_bytes
 
-    # Generar el PDF en bytes
-    pdf_generado = generar_pdf(df_resultados)
+    # Procesar descarga
+    pdf_generado = generar_pdf(st.session_state.proyectos, df_resultados)
 
-    # 3. Botón de Descarga
-    st.write("Genera tu archivo PDF. La primera página contiene el formato para el cliente y la segunda tu reporte interno.")
+    st.write("Genera tu archivo PDF. Incluye la cotización, tu reporte de márgenes y un anexo con el desglose exacto de pagos a técnicos y viáticos.")
     st.download_button(
-        label="📥 Descargar Formato de Cotización (PDF)",
+        label="📥 Descargar Formato Completo (PDF)",
         data=pdf_generado,
         file_name="Cotizaciones_Latitud_Solar.pdf",
         mime="application/pdf",
