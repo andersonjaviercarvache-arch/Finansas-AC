@@ -109,12 +109,13 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             suma_viaticos = 0
             
             for concepto, datos in p["_Viaticos"].items():
-                if datos["tipo"] == "por_persona":
+                # ---> SOLUCIÓN AL KEYERROR INTEGRADA AQUÍ <---
+                if datos.get("tipo", "por_persona") == "por_persona":
                     total_concepto = datos["costo"] * datos["dias"] * num_personas
                     pdf.cell(60, 6, concepto, border=1)
                     pdf.cell(40, 6, f"${datos['costo']:,.2f}", border=1, align='C')
                     pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
-                else: # Tipo individual
+                else: # Tipo individual / fijo interno de la ciudad
                     total_concepto = datos["costo"]
                     pdf.cell(60, 6, concepto, border=1)
                     pdf.cell(40, 6, "Fijo Individual", border=1, align='C')
@@ -250,11 +251,9 @@ with tab_registro:
         ])
         df_personal_editado = st.data_editor(df_personal_base, use_container_width=True, hide_index=True)
 
-    # --- SECCIÓN CONDICIONAL SOLICITADA: COSTOS OPERATIVOS ---
     with st.expander("🚗 2. Costos Operativos y Viáticos", expanded=False):
         tipo_ubicacion = st.selectbox("📍 Logística Geográfica", ["Fuera de la ciudad", "Dentro de la ciudad"])
         
-        # Inicialización de variables para cálculo seguro
         costo_viaticos_total = 0.0
         dict_viaticos_guardar = {}
         
@@ -311,7 +310,6 @@ with tab_registro:
             personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
             num_personas = len(personal_activo)
             
-            # Alimentación va en conjunto (multiplicado por personas) | Movilización y Visita son fijos individuales
             total_alimentacion_in = alim_costo_in * alim_dias_in * num_personas
             costo_viaticos_total = total_alimentacion_in + mov_total_in + visita_config_in
             
