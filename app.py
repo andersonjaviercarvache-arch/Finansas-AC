@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+from fpdf import FPDF
+import os
 
 st.set_page_config(page_title="Gestor de Rentabilidad", layout="wide")
 
@@ -12,14 +14,12 @@ if 'proyectos' not in st.session_state:
 # --- SECCIÓN: REGISTRO DE PROYECTO ---
 st.header("Registrar Nuevo Proyecto")
 
-# 1. Datos Generales
 col_info, col_dias = st.columns(2)
 nombre_proyecto = col_info.text_input("Nombre del Proyecto")
 dias_trabajo = col_dias.number_input("Días de Trabajo en Obra", min_value=1, value=4)
 
 st.write("---")
 
-# 2. Personal y Mano de Obra
 st.subheader("1. Costos de Personal (Por Día)")
 st.write("Edita la tarifa o marca la casilla 'Asignado' para incluir al trabajador en esta obra.")
 
@@ -33,7 +33,6 @@ df_personal_editado = st.data_editor(df_personal_base, use_container_width=True,
 
 st.write("---")
 
-# 3. Desglose de Viáticos
 st.subheader("2. Desglose de Viáticos Diarios (Por Persona)")
 col_v1, col_v2, col_v3 = st.columns(3)
 alim = col_v1.number_input("Alimentación ($)", min_value=0.0, value=15.0)
@@ -45,7 +44,6 @@ st.info(f"**Total viáticos diarios por persona:** ${viatico_diario_pp:.2f}")
 
 st.write("---")
 
-# 4. Materiales Adicionales
 st.subheader("3. Materiales y Otros")
 costo_materiales = st.number_input("Costo de Materiales o Equipos ($)", min_value=0.0, value=0.0, step=50.0)
 
@@ -54,12 +52,10 @@ st.write("---")
 # --- CÁLCULO DE MÁRGENES Y PRECIO FINAL ---
 st.subheader("4. Ajuste de Márgenes y Precio de Venta")
 
-# Controles para ajustar los porcentajes (puedes bajarlos a 0 o subirlos a tu gusto)
 col_pct1, col_pct2 = st.columns(2)
 pct_imprevistos = col_pct1.slider("Porcentaje para Imprevistos (%)", min_value=0, max_value=100, value=20, step=5)
 pct_ganancia = col_pct2.slider("Porcentaje de Ganancia (%)", min_value=0, max_value=100, value=40, step=5)
 
-# Cálculos matemáticos en tiempo real
 personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
 num_personas = len(personal_activo)
 
@@ -70,24 +66,18 @@ costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
 reserva_imprevistos = costo_directo * (pct_imprevistos / 100)
 ganancia_esperada = costo_directo * (pct_ganancia / 100)
 
-# PRECIO DE VENTA FINAL (Sin IVA)
 precio_venta_final = costo_directo + reserva_imprevistos + ganancia_esperada
-
-# CÁLCULO DEL IVA (15%) Y PRECIO TOTAL
 iva_monto = precio_venta_final * 0.15
 precio_total_con_iva = precio_venta_final + iva_monto
 
-# Mostrar desglose en pantalla
 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
 col_s1.metric("Costo Directo", f"${costo_directo:,.2f}")
 col_s2.metric(f"Imprevistos ({pct_imprevistos}%)", f"${reserva_imprevistos:,.2f}")
 col_s3.metric(f"Ganancia ({pct_ganancia}%)", f"${ganancia_esperada:,.2f}")
 col_s4.metric("PRECIO DE VENTA FINAL", f"${precio_venta_final:,.2f}")
 
-# Mostrar cuadro final con Impuestos
 st.success(f"**PRECIO DE VENTA FINAL:** ${precio_venta_final:,.2f}  |  **IVA (15%):** ${iva_monto:,.2f}  |  **PRECIO TOTAL:** ${precio_total_con_iva:,.2f}")
 
-# Botón para guardar el proyecto en el registro mensual
 if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
         st.session_state.proyectos.append({
@@ -103,44 +93,100 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
     else:
         st.error("Por favor, ingresa el nombre del proyecto en la parte superior.")
 
-# --- SECCIÓN: REPORTE MENSUAL ---
+# --- SECCIÓN: REPORTE MENSUAL Y DESCARGAS ---
 st.write("---")
-st.header("Reporte Mensual de Facturación")
+st.header("Reporte Mensual y Cotizaciones")
 
 if st.session_state.proyectos:
-    # Crear y mostrar tabla resumen
     df_resultados = pd.DataFrame(st.session_state.proyectos)
     
-    # Formato visual para que se vea como moneda
+    # Formato visual en pantalla
     formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col != "Proyecto"}
     df_mostrar = df_resultados.style.format(formato_moneda)
-    
     st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
     
-    # Sumatorias para las tarjetas finales
-    total_costos = df_resultados["Costo Directo"].sum()
-    
-    # Manejar las sumatorias dinámicas de imprevistos y ganancias (por si cambian los porcentajes entre proyectos)
-    cols_imprevistos = [col for col in df_resultados.columns if "Imprevistos" in col]
-    cols_ganancias = [col for col in df_resultados.columns if "Ganancia" in col]
-    
-    total_imprevistos = df_resultados[cols_imprevistos].sum().sum()
-    total_utilidad = df_resultados[cols_ganancias].sum().sum()
-    
-    total_venta_final = df_resultados["PRECIO VENTA FINAL"].sum()
-    total_iva = df_resultados["IVA (15%)"].sum()
-    total_recaudado = df_resultados["PRECIO TOTAL"].sum()
-    
-    # Tarjetas resumen
-    st.subheader("Resumen General")
-    col_m1, col_m2, col_m3 = st.columns(3)
-    col_m1.metric("Total Costos Directos", f"${total_costos:,.2f}")
-    col_m2.metric("Total Fondo Emergencias", f"${total_imprevistos:,.2f}")
-    col_m3.metric("Total Ganancia Neta", f"${total_utilidad:,.2f}")
-    
-    col_t1, col_t2, col_t3 = st.columns(3)
-    col_t1.metric("Subtotal (Venta Final)", f"${total_venta_final:,.2f}")
-    col_t2.metric("IVA por Declarar", f"${total_iva:,.2f}")
-    col_t3.metric("Total a Cobrar a Clientes", f"${total_recaudado:,.2f}")
+    # --- LÓGICA DE EXPORTACIÓN A PDF ---
+    def generar_pdf(df_interno):
+        pdf = FPDF()
+        
+        # --- PÁGINA 1: COTIZACIÓN CLIENTE (Solo valores finales) ---
+        pdf.add_page()
+        pdf.set_font("Helvetica", 'B', 16)
+        pdf.cell(0, 10, "COTIZACIÓN COMERCIAL - LATITUD SOLAR", new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.ln(10)
+        
+        # Encabezados de la tabla Cliente
+        pdf.set_font("Helvetica", 'B', 11)
+        pdf.cell(90, 10, "Descripción del Proyecto", border=1, align='C')
+        pdf.cell(35, 10, "Subtotal", border=1, align='C')
+        pdf.cell(30, 10, "IVA (15%)", border=1, align='C')
+        pdf.cell(35, 10, "Total a Pagar", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+        
+        # Datos de la tabla Cliente
+        pdf.set_font("Helvetica", '', 10)
+        for _, row in df_interno.iterrows():
+            # Truncar el nombre si es muy largo
+            nombre = str(row['Proyecto'])[:45]
+            pdf.cell(90, 10, nombre, border=1)
+            pdf.cell(35, 10, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, align='R')
+            pdf.cell(30, 10, f"${row['IVA (15%)']:,.2f}", border=1, align='R')
+            pdf.cell(35, 10, f"${row['PRECIO TOTAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+            
+        pdf.ln(20)
+        pdf.set_font("Helvetica", 'I', 10)
+        pdf.cell(0, 10, "Nota: Los valores incluyen mano de obra, viáticos y equipos acordados.", new_x="LMARGIN", new_y="NEXT", align='C')
+        
+        # --- PÁGINA 2: REPORTE INTERNO (Confidencial) ---
+        pdf.add_page()
+        pdf.set_font("Helvetica", 'B', 16)
+        pdf.cell(0, 10, "REPORTE INTERNO DE RENTABILIDAD (CONFIDENCIAL)", new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.ln(10)
+        
+        # Identificar dinámicamente las columnas de Imprevistos y Ganancias
+        col_imprevisto = [c for c in df_interno.columns if "Imprevistos" in c][0]
+        col_ganancia = [c for c in df_interno.columns if "Ganancia" in c][0]
+        
+        # Encabezados tabla Interna
+        pdf.set_font("Helvetica", 'B', 9)
+        pdf.cell(60, 10, "Proyecto", border=1, align='C')
+        pdf.cell(30, 10, "Costo Directo", border=1, align='C')
+        pdf.cell(35, 10, "Fondo Imprevistos", border=1, align='C')
+        pdf.cell(30, 10, "Ganancia Neta", border=1, align='C')
+        pdf.cell(35, 10, "Precio de Venta", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+        
+        # Datos de la tabla Interna
+        pdf.set_font("Helvetica", '', 9)
+        for _, row in df_interno.iterrows():
+            nombre = str(row['Proyecto'])[:30]
+            pdf.cell(60, 10, nombre, border=1)
+            pdf.cell(30, 10, f"${row['Costo Directo']:,.2f}", border=1, align='R')
+            pdf.cell(35, 10, f"${row[col_imprevisto]:,.2f}", border=1, align='R')
+            pdf.cell(30, 10, f"${row[col_ganancia]:,.2f}", border=1, align='R')
+            pdf.cell(35, 10, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+            
+        # Guardar archivo temporalmente
+        temp_file = "cotizacion_latitud_solar.pdf"
+        pdf.output(temp_file)
+        
+        with open(temp_file, "rb") as f:
+            pdf_bytes = f.read()
+            
+        # Limpieza de archivo temporal
+        os.remove(temp_file)
+        return pdf_bytes
+
+    # Generar el PDF en bytes
+    pdf_generado = generar_pdf(df_resultados)
+
+    # 3. Botón de Descarga
+    st.write("Genera tu archivo PDF. La primera página contiene el formato para el cliente y la segunda tu reporte interno.")
+    st.download_button(
+        label="📥 Descargar Formato de Cotización (PDF)",
+        data=pdf_generado,
+        file_name="Cotizaciones_Latitud_Solar.pdf",
+        mime="application/pdf",
+        type="primary"
+    )
+
 else:
     st.info("Aún no tienes proyectos guardados. Configura uno en la parte superior y presiona 'Guardar Proyecto'.")
