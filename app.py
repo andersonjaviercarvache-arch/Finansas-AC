@@ -105,25 +105,31 @@ st.success(f"**PRECIO DE VENTA FINAL:** ${precio_venta_final:,.2f}  |  **IVA (15
 
 if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
-        st.session_state.proyectos.append({
-            "Proyecto": nombre_proyecto,
-            "Costo Directo": costo_directo,
-            f"Imprevistos ({pct_imprevistos}%)": reserva_imprevistos,
-            f"Ganancia ({pct_ganancia}%)": ganancia_esperada,
-            "PRECIO VENTA FINAL": precio_venta_final,
-            "IVA (15%)": iva_monto,
-            "PRECIO TOTAL": precio_total_con_iva,
-            "_Dias": dias_trabajo,
-            "_Personal": personal_activo.to_dict('records'),
-            "_Viaticos": {
-                "Alimentación": {"costo": alim_costo, "dias": alim_dias},
-                "Movilización": {"costo": mov_costo, "dias": mov_dias},
-                "Hidratación": {"costo": hidra_costo, "dias": hidra_dias},
-                "Hospedaje": {"costo": hosp_costo, "dias": hosp_dias}
-            },
-            "_Materiales": costo_materiales
-        })
-        st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente.")
+        # Validar que el nombre no exista para evitar confusiones al eliminar o descargar
+        nombres_existentes = [p["Proyecto"] for p in st.session_state.proyectos]
+        if nombre_proyecto in nombres_existentes:
+            st.error("Ya existe un proyecto con este nombre. Por favor, usa un nombre distinto (Ej: Proyecto Aroma Cacao V2).")
+        else:
+            st.session_state.proyectos.append({
+                "Proyecto": nombre_proyecto,
+                "Costo Directo": costo_directo,
+                f"Imprevistos ({pct_imprevistos}%)": reserva_imprevistos,
+                f"Ganancia ({pct_ganancia}%)": ganancia_esperada,
+                "PRECIO VENTA FINAL": precio_venta_final,
+                "IVA (15%)": iva_monto,
+                "PRECIO TOTAL": precio_total_con_iva,
+                "_Dias": dias_trabajo,
+                "_Personal": personal_activo.to_dict('records'),
+                "_Viaticos": {
+                    "Alimentación": {"costo": alim_costo, "dias": alim_dias},
+                    "Movilización": {"costo": mov_costo, "dias": mov_dias},
+                    "Hidratación": {"costo": hidra_costo, "dias": hidra_dias},
+                    "Hospedaje": {"costo": hosp_costo, "dias": hosp_dias}
+                },
+                "_Materiales": costo_materiales
+            })
+            st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente.")
+            st.rerun()
     else:
         st.error("Por favor, ingresa el nombre del proyecto en la parte superior.")
 
@@ -132,6 +138,7 @@ st.write("---")
 st.header("Reporte Mensual y Cotizaciones")
 
 if st.session_state.proyectos:
+    # 1. Mostrar Tabla General
     datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
     df_resultados = pd.DataFrame(datos_publicos)
     
@@ -139,7 +146,23 @@ if st.session_state.proyectos:
     df_mostrar = df_resultados.style.format(formato_moneda)
     st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
     
-    # --- LÓGICA DE EXPORTACIÓN A PDF CENTRADO PERFECTO (190mm TOTAL) ---
+    # 2. Panel de Gestión (Eliminar y Descargar)
+    st.write("---")
+    st.subheader("🛠️ Panel de Control de Proyectos")
+    col_gest1, col_gest2 = st.columns(2)
+    
+    # Herramienta para Eliminar
+    with col_gest1:
+        st.markdown("**❌ Eliminar un Proyecto**")
+        nombres_proyectos = [p["Proyecto"] for p in st.session_state.proyectos]
+        proyecto_a_eliminar = st.selectbox("Selecciona el proyecto que deseas borrar:", nombres_proyectos)
+        
+        if st.button("Eliminar Proyecto Seleccionado"):
+            st.session_state.proyectos = [p for p in st.session_state.proyectos if p["Proyecto"] != proyecto_a_eliminar]
+            st.warning(f"El proyecto '{proyecto_a_eliminar}' ha sido eliminado.")
+            st.rerun()
+
+    # --- LÓGICA DE EXPORTACIÓN A PDF ---
     def generar_pdf(lista_proyectos, df_interno):
         pdf = FPDF(orientation="P", unit="mm", format="A4")
         pdf.set_margins(left=10, top=15, right=10)
@@ -182,7 +205,7 @@ if st.session_state.proyectos:
             pdf.set_font("Helvetica", 'B', 10)
             pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Duración Obra: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
             
-            # --- Tabla 1: Personal ---
+            # Tabla 1: Personal
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(0, 6, "Costo de Personal (Asignado a la obra):", new_x="LMARGIN", new_y="NEXT")
             
@@ -200,14 +223,14 @@ if st.session_state.proyectos:
                 pdf.cell(60, 6, f"${persona['Costo Día ($)']:,.2f}", border=1, align='C')
                 pdf.cell(60, 6, f"${total_rol:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             
-            # Fila de Total de Personal (130 de ancho = 70 + 60, alineado con la última celda de 60)
+            # Fila de Total Personal
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(130, 6, "TOTAL COSTO PERSONAL", border=1, align='R')
             pdf.cell(60, 6, f"${suma_personal:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             
             pdf.ln(3)
             
-            # --- Tabla 2: Viáticos ---
+            # Tabla 2: Viáticos
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(0, 6, "Desglose de Viáticos (Calculado para todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
             
@@ -228,7 +251,7 @@ if st.session_state.proyectos:
                 pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
                 pdf.cell(60, 6, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
                 
-            # Fila de Total de Viáticos (130 de ancho = 60 + 40 + 30, alineado con la última celda de 60)
+            # Fila de Total Viáticos
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(130, 6, "TOTAL VIÁTICOS", border=1, align='R')
             pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
@@ -266,30 +289,40 @@ if st.session_state.proyectos:
             pdf.cell(35, 8, f"${row[col_ganancia]:,.2f}", border=1, align='R')
             pdf.cell(35, 8, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
 
-        # Generar y retornar PDF
-        temp_file = "cotizacion_latitud_solar_final.pdf"
+        temp_file = "temp_report.pdf"
         pdf.output(temp_file)
-        
         with open(temp_file, "rb") as f:
             pdf_bytes = f.read()
         os.remove(temp_file)
         return pdf_bytes
 
-    # Procesar descarga
-    pdf_generado = generar_pdf(st.session_state.proyectos, df_resultados)
-
-    st.write("---")
-    st.subheader("📥 Zona de Descarga")
-    st.info("Tu reporte está listo. Toda la información fluye de manera continua y los márgenes están perfectamente alineados a 190mm.")
-    
-    st.download_button(
-        label="📄 Descargar PDF (Formato Continuo)",
-        data=pdf_generado,
-        file_name="Reporte_Comercial_Latitud_Solar.pdf",
-        mime="application/pdf",
-        type="primary",
-        use_container_width=True
-    )
+    # Herramienta para Descargar (Todos o Específico)
+    with col_gest2:
+        st.markdown("**📥 Descargar PDF Comercial**")
+        opciones_descarga = ["Todos los proyectos"] + nombres_proyectos
+        seleccion_descarga = st.selectbox("Selecciona qué deseas exportar al PDF:", opciones_descarga)
+        
+        # Filtramos los datos según la selección
+        if seleccion_descarga == "Todos los proyectos":
+            lista_a_exportar = st.session_state.proyectos
+            df_a_exportar = df_resultados
+            nombre_archivo = "Cotizaciones_Completas_Latitud_Solar.pdf"
+        else:
+            lista_a_exportar = [p for p in st.session_state.proyectos if p["Proyecto"] == seleccion_descarga]
+            df_a_exportar = df_resultados[df_resultados["Proyecto"] == seleccion_descarga]
+            nombre_archivo = f"Cotizacion_{seleccion_descarga.replace(' ', '_')}.pdf"
+            
+        # Generar el PDF con los datos filtrados
+        pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar)
+        
+        st.download_button(
+            label=f"📄 Descargar ({seleccion_descarga})",
+            data=pdf_generado,
+            file_name=nombre_archivo,
+            mime="application/pdf",
+            type="primary",
+            use_container_width=True
+        )
 
 else:
     st.info("Aún no tienes proyectos guardados. Configura uno en la parte superior y presiona 'Guardar Proyecto'.")
