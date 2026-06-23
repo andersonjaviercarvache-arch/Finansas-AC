@@ -4,12 +4,12 @@ from fpdf import FPDF
 import os
 import datetime
 import json
-import matplotlib.pyplot as plt
+import plotly.express as px
 
 # =========================================================================
 # --- CONFIGURACIÓN DE PÁGINA Y ESTILOS CSS (TEMA AZUL CORPORATIVO) ---
 # =========================================================================
-st.set_page_config(page_title="Latitud Solar | Gestor Financiero", layout="wide", page_icon="☀️")
+st.set_page_config(page_title="Gestor Financiero", layout="wide", page_icon="📊")
 
 st.markdown("""
     <style>
@@ -53,9 +53,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Título Limpio sin Banner
-st.markdown("<h1 style='text-align: center; color: #1f3c88; margin-bottom: 0;'>☀️ LATITUD SOLAR</h1>", unsafe_allow_html=True)
-st.markdown("<h4 style='text-align: center; color: #555; font-weight: 400; margin-top: 0;'>Sistema de Ingeniería de Costos y Control Financiero</h4>", unsafe_allow_html=True)
+# Título Limpio 
+st.markdown("<h2 style='text-align: center; color: #1f3c88; margin-bottom: 0;'>📊 Sistema de Ingeniería de Costos y Control Financiero</h2>", unsafe_allow_html=True)
 st.write("---")
 
 # --- CONFIGURACIÓN DE LA BASE DE DATOS LOCAL (JSON) ---
@@ -99,6 +98,7 @@ with st.sidebar:
         st.warning("Sistema en blanco.")
         
     st.write("---")
+    st.caption("© 2026 | Sistema Interno")
 
 # --- LÓGICA DE EXPORTACIÓN A PDF ---
 def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=None):
@@ -112,7 +112,7 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
 
     if tipo_exportacion == "individual":
         pdf.set_font("Helvetica", 'B', 14)
-        pdf.cell(0, 8, "COTIZACIÓN COMERCIAL - LATITUD SOLAR", new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.cell(0, 8, "COTIZACIÓN COMERCIAL", new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(5)
         
         pdf.set_font("Helvetica", 'B', 10)
@@ -332,7 +332,7 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
 tab_dashboard, tab_registro, tab_reportes = st.tabs(["📊 Dashboard Analítico", "✍️ Cargar Operación", "📑 Informes y Exportación"])
 
 # -------------------------------------------------------------------------
-# PESTAÑA 1: DASHBOARD (GRÁFICOS ESTÁTICOS Y COMPACTOS)
+# PESTAÑA 1: DASHBOARD INTERACTIVO (PLOTLY SIN MODEBAR)
 # -------------------------------------------------------------------------
 with tab_dashboard:
     if st.session_state.proyectos:
@@ -358,51 +358,43 @@ with tab_dashboard:
         
         st.write("---")
         
-        # Gráficos Estáticos con Matplotlib (Pequeños y de color Azul/Naranja)
-        col_graf1, col_graf2 = st.columns(2)
+        col_graf1, col_graf2 = st.columns([2, 1])
         
         with col_graf1:
             st.markdown("#### Ingresos vs Egresos (Mensual)")
-            fig_bar, ax_bar = plt.subplots(figsize=(5, 3))
             
-            x = range(len(resumen_mensual["Mes"]))
-            width = 0.35
+            df_bar = resumen_mensual.melt(id_vars=["Mes"], value_vars=["PRECIO VENTA FINAL", "Costo Operativo"], 
+                                          var_name="Indicador", value_name="Monto")
+            df_bar["Indicador"] = df_bar["Indicador"].replace({"PRECIO VENTA FINAL": "Ingresos", "Costo Operativo": "Costos"})
             
-            # Azul corporativo y Azul claro/Gris para contraste
-            ax_bar.bar([i - width/2 for i in x], resumen_mensual["PRECIO VENTA FINAL"], width, label='Ingresos', color='#1f77b4')
-            ax_bar.bar([i + width/2 for i in x], resumen_mensual["Costo Operativo"], width, label='Costos', color='#aec7e8')
+            # Gráfico de Barras con la paleta Azul
+            fig_bar = px.bar(df_bar, x="Mes", y="Monto", color="Indicador", barmode="group",
+                             color_discrete_map={"Ingresos": "#1f77b4", "Costos": "#aec7e8"},
+                             text_auto='.2s')
             
-            ax_bar.set_xticks(x)
-            ax_bar.set_xticklabels(resumen_mensual["Mes"], rotation=45, ha='right', fontsize=8)
-            ax_bar.tick_params(axis='y', labelsize=8)
-            ax_bar.legend(fontsize=8)
-            
-            # Eliminar bordes para un look más limpio
-            ax_bar.spines['top'].set_visible(False)
-            ax_bar.spines['right'].set_visible(False)
-            
-            fig_bar.tight_layout()
-            st.pyplot(fig_bar)
+            fig_bar.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+                xaxis_title="", yaxis_title="",
+                legend_title="", hovermode="x unified", margin=dict(l=0, r=0, t=20, b=0)
+            )
+            # st.plotly_chart con config para ocultar la barra de herramientas
+            st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
         with col_graf2:
-            st.markdown("#### Distribución de Ingresos")
-            fig_pie, ax_pie = plt.subplots(figsize=(5, 3))
+            st.markdown("#### Distribución de Costos y Ganancias")
+            df_pie = pd.DataFrame({
+                "Categoría": ["Costo Operativo", "IVA Retenido", "Utilidad Neta"],
+                "Monto": [t_costo, t_iva, t_ganancia]
+            })
             
-            labels = ["Costo Operativo", "IVA", "Utilidad Neta"]
-            sizes = [t_costo, t_iva, t_ganancia]
-            # Azul claro, Naranja de alerta, Azul principal
-            colors = ['#aec7e8', '#ff7f0e', '#1f77b4']
+            # Gráfico de dona con la paleta Azul / Naranja (para contraste del IVA)
+            fig_donut = px.pie(df_pie, values='Monto', names='Categoría', hole=0.6,
+                               color='Categoría',
+                               color_discrete_map={"Costo Operativo": "#aec7e8", "IVA Retenido": "#ff7f0e", "Utilidad Neta": "#1f77b4"})
             
-            wedges, texts, autotexts = ax_pie.pie(sizes, labels=labels, autopct='%1.1f%%', 
-                                                  startangle=90, colors=colors, textprops={'fontsize': 8})
-            
-            # Convertir a Dona
-            centre_circle = plt.Circle((0,0),0.65,fc='white')
-            fig_pie.gca().add_artist(centre_circle)
-            
-            ax_pie.axis('equal')
-            fig_pie.tight_layout()
-            st.pyplot(fig_pie)
+            fig_donut.update_layout(margin=dict(l=0, r=0, t=20, b=0), showlegend=True, 
+                                    legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
+            st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
 
     else:
         st.info("Aún no hay datos suficientes para generar los gráficos. Registra un proyecto primero.")
@@ -622,13 +614,13 @@ with tab_reportes:
                 st.download_button(label="📄 Descargar Formato PDF", data=pdf_individual, file_name=nombre_archivo, mime="application/pdf", type="primary")
 
         st.write("---")
-        with st.expander("⚙️ Gestión y Depuración de Registros"):
+        with st.expander("⚙️ Eliminar Registros"):
             nombres_proyectos_del = [p["Proyecto"] for p in st.session_state.proyectos]
             proyecto_a_eliminar = st.selectbox("Selecciona para borrar:", nombres_proyectos_del, key="del_proj_box")
-            if st.button("🗑️ Eliminar Definitivamente"):
+            if st.button("🗑️ Eliminar"):
                 st.session_state.proyectos = [p for p in st.session_state.proyectos if p["Proyecto"] != proyecto_a_eliminar]
                 guardar_en_base_de_datos(st.session_state.proyectos)
-                st.warning("Proyecto Removido.")
+                st.warning("Eliminado.")
                 st.rerun()
     else:
-        st.info("⚠️ No hay datos registrados.")
+        st.info("⚠️ Sin datos.")
