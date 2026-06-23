@@ -144,6 +144,7 @@ if st.session_state.proyectos:
         # A4 = 210mm ancho. Márgenes 10mm L/R = 190mm de área de trabajo exacto.
         pdf = FPDF(orientation="P", unit="mm", format="A4")
         pdf.set_margins(left=10, top=15, right=10)
+        # Se añade la página UNA sola vez. El resto fluye continuamente.
         pdf.add_page() 
         
         # ==========================================
@@ -256,5 +257,29 @@ if st.session_state.proyectos:
             pdf.cell(35, 8, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
 
         # Generar y retornar PDF
-        temp_file = "cotizacion_latitud_solar.pdf"
-        pdf.output
+        temp_file = "cotizacion_latitud_solar_final.pdf"
+        pdf.output(temp_file)
+        
+        with open(temp_file, "rb") as f:
+            pdf_bytes = f.read()
+        os.remove(temp_file)
+        return pdf_bytes
+
+    # Procesar descarga
+    pdf_generado = generar_pdf(st.session_state.proyectos, df_resultados)
+
+    st.write("---")
+    st.subheader("📥 Zona de Descarga")
+    st.info("Tu reporte está listo. Toda la información fluye de manera continua y los márgenes están perfectamente alineados a 190mm.")
+    
+    st.download_button(
+        label="📄 Descargar PDF (Formato Continuo)",
+        data=pdf_generado,
+        file_name="Reporte_Comercial_Latitud_Solar.pdf",
+        mime="application/pdf",
+        type="primary",
+        use_container_width=True
+    )
+
+else:
+    st.info("Aún no tienes proyectos guardados. Configura uno en la parte superior y presiona 'Guardar Proyecto'.")
