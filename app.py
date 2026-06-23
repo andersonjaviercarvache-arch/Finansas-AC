@@ -33,11 +33,11 @@ df_personal_editado = st.data_editor(df_personal_base, use_container_width=True,
 
 st.write("---")
 
-# --- SECCIÓN DE VIÁTICOS INDEPENDIENTES ---
+# --- SECCIÓN DE VIÁTICOS INDEPENDIENTES (CON HOSPEDAJE) ---
 st.subheader("2. Desglose de Viáticos (Por Persona)")
 st.write("Ingresa el valor diario y cuántos días aplica cada rubro (por defecto toma los días de la obra).")
 
-col_v1, col_v2, col_v3 = st.columns(3)
+col_v1, col_v2, col_v3, col_v4 = st.columns(4)
 
 with col_v1:
     st.markdown("**Alimentación**")
@@ -54,11 +54,17 @@ with col_v3:
     hidra_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=10.0, key="hidra_c")
     hidra_dias = st.number_input("Días", min_value=0, value=dias_trabajo, key="hidra_d")
 
+with col_v4:
+    st.markdown("**Hospedaje**")
+    hosp_costo = st.number_input("Costo/Noche ($)", min_value=0.0, value=20.0, key="hosp_c")
+    hosp_dias = st.number_input("Noches", min_value=0, value=max(0, dias_trabajo - 1), key="hosp_d")
+
 total_alim_pp = alim_costo * alim_dias
 total_mov_pp = mov_costo * mov_dias
 total_hidra_pp = hidra_costo * hidra_dias
+total_hosp_pp = hosp_costo * hosp_dias
 
-viatico_total_pp = total_alim_pp + total_mov_pp + total_hidra_pp
+viatico_total_pp = total_alim_pp + total_mov_pp + total_hidra_pp + total_hosp_pp
 st.info(f"**Total acumulado de viáticos por cada persona (durante toda la obra):** ${viatico_total_pp:.2f}")
 
 st.write("---")
@@ -112,7 +118,8 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
             "_Viaticos": {
                 "Alimentación": {"costo": alim_costo, "dias": alim_dias},
                 "Movilización": {"costo": mov_costo, "dias": mov_dias},
-                "Hidratación": {"costo": hidra_costo, "dias": hidra_dias}
+                "Hidratación": {"costo": hidra_costo, "dias": hidra_dias},
+                "Hospedaje": {"costo": hosp_costo, "dias": hosp_dias}
             },
             "_Materiales": costo_materiales
         })
@@ -201,7 +208,7 @@ if st.session_state.proyectos:
             
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(60, 6, "Concepto", border=1)
-            pdf.cell(40, 6, "Diario (c/u)", border=1, align='C')
+            pdf.cell(40, 6, "Diario/Noche (c/u)", border=1, align='C')
             pdf.cell(30, 6, "Días", border=1, align='C')
             pdf.cell(60, 6, "Costo Total del Grupo", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
             
@@ -250,24 +257,4 @@ if st.session_state.proyectos:
 
         # Generar y retornar PDF
         temp_file = "cotizacion_latitud_solar.pdf"
-        pdf.output(temp_file)
-        
-        with open(temp_file, "rb") as f:
-            pdf_bytes = f.read()
-        os.remove(temp_file)
-        return pdf_bytes
-
-    # Procesar descarga
-    pdf_generado = generar_pdf(st.session_state.proyectos, df_resultados)
-
-    st.write("Genera tu archivo PDF. Los márgenes ahora están unificados al 100% (ancho exacto de 190mm) para un aspecto limpio y centrado.")
-    st.download_button(
-        label="📥 Descargar Formato Completo (PDF)",
-        data=pdf_generado,
-        file_name="Cotizaciones_Latitud_Solar.pdf",
-        mime="application/pdf",
-        type="primary"
-    )
-
-else:
-    st.info("Aún no tienes proyectos guardados. Configura uno en la parte superior y presiona 'Guardar Proyecto'.")
+        pdf.output
