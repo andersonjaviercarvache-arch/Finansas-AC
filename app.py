@@ -3,15 +3,34 @@ import pandas as pd
 from fpdf import FPDF
 import os
 import datetime
+import json
 
 # Configuración inicial de la página en modo ancho
 st.set_page_config(page_title="Gestor de Rentabilidad", layout="wide")
 
 st.title("📊 Gestor Financiero - Latitud Solar")
 
-# --- INICIALIZAR MEMORIA ---
+# --- CONFIGURACIÓN DE LA BASE DE DATOS LOCAL (JSON) ---
+DB_FILE = "proyectos_db.json"
+
+def cargar_base_de_datos():
+    """Lee el archivo JSON si existe; de lo contrario, devuelve una lista vacía."""
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []  # Si el archivo está corrupto o vacío, devuelve lista vacía
+    return []
+
+def guardar_en_base_de_datos(proyectos):
+    """Escribe todo el historial de proyectos en el archivo JSON."""
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(proyectos, f, ensure_ascii=False, indent=4)
+
+# --- INICIALIZAR MEMORIA DESDE LA BASE DE DATOS ---
 if 'proyectos' not in st.session_state:
-    st.session_state.proyectos = []
+    st.session_state.proyectos = cargar_base_de_datos()
 
 # Diccionario para traducir los meses cronológicamente
 meses_es = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 
@@ -105,7 +124,6 @@ precio_sugerido = costo_directo + reserva_imprevistos + ganancia_calculada
 st.markdown("### 🎯 Definir Precio Final")
 st.info(f"💡 El precio base sugerido según la fórmula es de **${precio_sugerido:,.2f}**.")
 
-# Casilla completamente editable para redondear o cambiar el precio final
 precio_venta_final = st.number_input(
     "Ingresa el Precio de Venta a Cobrar (Sin IVA) ($)", 
     min_value=0.0, 
@@ -132,7 +150,7 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
         nombres_existentes = [p["Proyecto"] for p in st.session_state.proyectos]
         if nombre_proyecto in nombres_existentes:
-            st.error("Ya existe un proyecto con este nombre. Por favor, utiliza uno diferente para evitar errores en las bases de datos.")
+            st.error("Ya existe un proyecto con este nombre. Por favor, utiliza uno diferente.")
         else:
             mes_str = meses_es[fecha_proyecto.month]
             st.session_state.proyectos.append({
@@ -156,7 +174,10 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
                 },
                 "_Materiales": costo_materiales
             })
-            st.success(f"Proyecto '{nombre_proyecto}' guardado exitosamente en el historial de {mes_str}.")
+            # ---> ACTUALIZAR LA BASE DE DATOS JSON <---
+            guardar_en_base_de_datos(st.session_state.proyectos)
+            
+            st.success(f"Proyecto '{nombre_proyecto}' guardado exitosamente en la base de datos.")
             st.rerun()
     else:
         st.error("Por favor, ingresa un nombre válido para el proyecto antes de guardar.")
@@ -184,13 +205,17 @@ if st.session_state.proyectos:
     col_gest1, col_gest2 = st.columns(2)
     
     with col_gest1:
-        st.markdown("**❌ Eliminar un Proyecto**")
+        st.markdown("****❌ Eliminar un Proyecto**")
         nombres_proyectos = [p["Proyecto"] for p in st.session_state.proyectos]
         proyecto_a_eliminar = st.selectbox("Selecciona el proyecto que deseas borrar:", nombres_proyectos)
         
         if st.button("Eliminar Proyecto Seleccionado"):
             st.session_state.proyectos = [p for p in st.session_state.proyectos if p["Proyecto"] != proyecto_a_eliminar]
-            st.warning(f"El proyecto '{proyecto_a_eliminar}' ha sido removido del sistema.")
+            
+            # ---> ACTUALIZAR LA BASE DE DATOS JSON AL ELIMINAR <---
+            guardar_en_base_de_datos(st.session_state.proyectos)
+            
+            st.warning(f"El proyecto '{proyecto_a_eliminar}' ha sido removido de la base de datos.")
             st.rerun()
 
     # --- LÓGICA DE EXPORTACIÓN A PDF (CENTRADO PERFECTO - 190mm TOTAL) ---
@@ -207,7 +232,6 @@ if st.session_state.proyectos:
             pdf.cell(0, 8, "COTIZACIÓN COMERCIAL - LATITUD SOLAR", new_x="LMARGIN", new_y="NEXT", align='C')
             pdf.ln(5)
             
-            # Anchos: 85 + 35 + 35 + 35 = 190mm
             pdf.set_font("Helvetica", 'B', 10)
             pdf.cell(85, 8, "Descripción del Proyecto", border=1, align='C')
             pdf.cell(35, 8, "Subtotal", border=1, align='C')
@@ -285,7 +309,7 @@ if st.session_state.proyectos:
                 pdf.cell(0, 6, f"Materiales y Otros Costos: ${p['_Materiales']:,.2f}", new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(8)
                 
-            # Reporte Interno Rentabilidad Individual (50 + 35 + 35 + 35 + 35 = 190mm)
+            # Reporte Interno Rentabilidad Individual
             pdf.ln(2)
             pdf.set_font("Helvetica", 'B', 14)
             pdf.cell(0, 8, "REPORTE INTERNO DE RENTABILIDAD", new_x="LMARGIN", new_y="NEXT", align='C')
@@ -315,7 +339,6 @@ if st.session_state.proyectos:
             pdf.cell(0, 8, titulo_reporte, new_x="LMARGIN", new_y="NEXT", align='C')
             pdf.ln(5)
             
-            # Distribución matemática exacta a 190mm: 40 + (25 * 6) = 190mm
             pdf.set_font("Helvetica", 'B', 8)
             pdf.cell(40, 8, "Proyecto", border=1, align='C')
             pdf.cell(25, 8, "Costo Dir.", border=1, align='C')
@@ -391,11 +414,8 @@ if st.session_state.proyectos:
                 titulo_doc = f"REPORTE INTERNO DE RENTABILIDAD - {mes_seleccionado.upper()}"
                 nombre_archivo = f"Todos_los_proyectos_{mes_seleccionado}.pdf"
                 
-                if len(lista_a_exportar) > 0:
-                    pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar, tipo_exportacion="todos", titulo_reporte=titulo_doc)
-                    st.download_button("📄 Descargar Reporte Mensual", data=pdf_generado, file_name=nombre_archivo, mime="application/pdf", type="primary", use_container_width=True)
-                else:
-                    st.warning("No hay proyectos registrados en este mes.")
+                pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar, tipo_exportacion="todos", titulo_reporte=titulo_doc)
+                st.download_button("📄 Descargar Reporte Mensual", data=pdf_generado, file_name=nombre_archivo, mime="application/pdf", type="primary", use_container_width=True)
             else:
                 st.warning("No hay proyectos registrados para segmentar por meses.")
                 
@@ -417,10 +437,8 @@ if st.session_state.proyectos:
     df_global = df_resultados.copy()
     df_global["Costo Operativo"] = df_global["Costo Directo"] + df_global["Fondo Imprevistos"]
     
-    # Agrupación y sumatorias dinámicas mes a mes
     resumen_mensual = df_global.groupby("Mes")[["Costo Operativo", "Ganancia Neta", "IVA (15%)", "PRECIO TOTAL"]].sum().reset_index()
     
-    # Ordenar los meses de forma cronológica estricta para el reporte
     resumen_mensual["Mes_Num"] = resumen_mensual["Mes"].apply(lambda x: meses.index(x))
     resumen_mensual = resumen_mensual.sort_values("Mes_Num").drop("Mes_Num", axis=1)
     
@@ -431,7 +449,6 @@ if st.session_state.proyectos:
         "PRECIO TOTAL": "${:,.2f}"
     }), use_container_width=True, hide_index=True)
     
-    # Gran desglose financiero total consolidado del año completo
     t_costo = resumen_mensual["Costo Operativo"].sum()
     t_ganancia = resumen_mensual["Ganancia Neta"].sum()
     t_iva = resumen_mensual["IVA (15%)"].sum()
