@@ -39,6 +39,11 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
     pdf.set_margins(left=10, top=15, right=10)
     pdf.add_page() 
     
+    # Encabezado General con Fecha de Impresión del Documento
+    pdf.set_font("Helvetica", 'I', 8)
+    pdf.cell(0, 4, f"Fecha de Emisión del Reporte: {datetime.date.today().strftime('%d/%m/%Y')}", new_x="LMARGIN", new_y="NEXT", align='R')
+    pdf.ln(2)
+
     if tipo_exportacion == "individual":
         # ==========================================
         # FORMATO INDIVIDUAL: COTIZACIÓN 3 PARTES
@@ -64,7 +69,7 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
         pdf.ln(3)
         pdf.set_font("Helvetica", 'I', 8)
         pdf.cell(0, 8, "Nota: Los valores incluyen mano de obra, viáticos y equipos acordados.", new_x="LMARGIN", new_y="NEXT", align='C')
-        pdf.ln(10)
+        pdf.ln(8)
 
         # Desglose de Costos Operativos
         pdf.set_font("Helvetica", 'B', 14)
@@ -73,7 +78,9 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
 
         for p in lista_proyectos:
             pdf.set_font("Helvetica", 'B', 10)
-            pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Mes: {p['Mes']} {p['Año']} | Duración: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
+            # Se añade de forma explícita la fecha del proyecto en la descripción
+            fecha_str = p.get("Fecha", "N/A")
+            pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Fecha de Ejecución: {fecha_str} | Periodo: {p['Mes']} {p['Año']} | Duración: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
             
             # Tabla Personal (70 + 60 + 60 = 190mm)
             pdf.set_font("Helvetica", 'B', 9)
@@ -109,13 +116,12 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             suma_viaticos = 0
             
             for concepto, datos in p["_Viaticos"].items():
-                # ---> SOLUCIÓN AL KEYERROR INTEGRADA AQUÍ <---
                 if datos.get("tipo", "por_persona") == "por_persona":
                     total_concepto = datos["costo"] * datos["dias"] * num_personas
                     pdf.cell(60, 6, concepto, border=1)
                     pdf.cell(40, 6, f"${datos['costo']:,.2f}", border=1, align='C')
                     pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
-                else: # Tipo individual / fijo interno de la ciudad
+                else: 
                     total_concepto = datos["costo"]
                     pdf.cell(60, 6, concepto, border=1)
                     pdf.cell(40, 6, "Fijo Individual", border=1, align='C')
@@ -131,50 +137,73 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             
             pdf.set_font("Helvetica", '', 9)
             pdf.cell(0, 6, f"Materiales y Otros Costos: ${p['_Materiales']:,.2f}", new_x="LMARGIN", new_y="NEXT")
-            pdf.ln(8)
+            pdf.ln(6)
             
-        # Reporte Interno Individual
-        pdf.ln(2)
-        pdf.set_font("Helvetica", 'B', 14)
-        pdf.cell(0, 8, "REPORTE INTERNO DE RENTABILIDAD", new_x="LMARGIN", new_y="NEXT", align='C')
-        pdf.ln(5)
-        
-        pdf.set_font("Helvetica", 'B', 8)
-        pdf.cell(50, 8, "Proyecto", border=1, align='C')
-        pdf.cell(35, 8, "Costo Directo", border=1, align='C')
-        pdf.cell(35, 8, "Imprevistos", border=1, align='C')
-        pdf.cell(35, 8, "Ganancia Neta", border=1, align='C')
-        pdf.cell(35, 8, "Precio Venta", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
-        
-        pdf.set_font("Helvetica", '', 8)
-        for _, row in df_interno.iterrows():
-            nombre = str(row['Proyecto'])[:25]
-            pdf.cell(50, 8, nombre, border=1)
-            pdf.cell(35, 8, f"${row.get('Costo Directo', 0.0):,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${row.get('Fondo Imprevistos', 0.0):,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${row.get('Ganancia Neta', 0.0):,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${row.get('PRECIO VENTA FINAL', 0.0):,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+            # =================================================================
+            # NUEVA SECCIÓN: REPORTE DE GANANCIAS Y PÉRDIDAS (INDIVIDUAL)
+            # =================================================================
+            pdf.set_font("Helvetica", 'B', 12)
+            pdf.cell(0, 8, "REPORTE INTERNO DE GANANCIAS Y PÉRDIDAS (P&L)", new_x="LMARGIN", new_y="NEXT", align='L')
+            pdf.ln(2)
+            
+            # Encabezados de columnas (95mm + 95mm = 190mm)
+            pdf.set_font("Helvetica", 'B', 9)
+            pdf.cell(95, 6, "GANANCIAS / INGRESOS (Entradas)", border=1, align='C')
+            pdf.cell(95, 6, "PÉRDIDAS / COSTOS (Salidas e Inversión)", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+            
+            pdf.set_font("Helvetica", '', 9)
+            # Fila 1: Ingresos de venta vs Costos Directos
+            pdf.cell(55, 6, " Precio de Venta Cobrado:", border='LTB')
+            pdf.cell(40, 6, f"${p['PRECIO VENTA FINAL']:,.2f} ", border='RTB', align='R')
+            pdf.cell(55, 6, " Inversión de Costos Directos:", border='LTB')
+            pdf.cell(40, 6, f"${p['Costo Directo']:,.2f} ", border='RTB', align='R', new_x="LMARGIN", new_y="NEXT")
+            
+            # Fila 2: Espacio en blanco ingresos vs Fondo de resguardo
+            pdf.cell(55, 6, "", border='LTB')
+            pdf.cell(40, 6, "", border='RTB', align='R')
+            pdf.cell(55, 6, " Fondo de Imprevistos Asignado:", border='LTB')
+            pdf.cell(40, 6, f"${p['Fondo Imprevistos']:,.2f} ", border='RTB', align='R', new_x="LMARGIN", new_y="NEXT")
+            
+            # Fila 3: Totales de bloques
+            pdf.set_font("Helvetica", 'B', 9)
+            pdf.cell(55, 6, " TOTAL INGRESOS PROYECTO:", border=1)
+            pdf.cell(40, 6, f"${p['PRECIO VENTA FINAL']:,.2f} ", border=1, align='R')
+            
+            total_egresos_p = p['Costo Directo'] + p['Fondo Imprevistos']
+            pdf.cell(55, 6, " TOTAL COSTOS OPERATIVOS:", border=1)
+            pdf.cell(40, 6, f"${total_egresos_p:,.2f} ", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+            
+            # Balance Neto Destacado
+            pdf.ln(2)
+            pdf.set_font("Helvetica", 'B', 10)
+            pdf.cell(130, 8, " BALANCE NETO / UTILIDAD REAL DEL PROYECTO:", border=1, align='R')
+            pdf.cell(60, 8, f"${p['Ganancia Neta']:,.2f} ", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
 
     elif tipo_exportacion == "todos":
-        # REPORTE CONSOLIDADO (40 + 25*6 = 190mm)
+        # ==========================================
+        # FORMATO CONSOLIDADO: REPORTE MENSUAL / ANUAL
+        # ==========================================
         pdf.set_font("Helvetica", 'B', 14)
         pdf.cell(0, 8, titulo_reporte, new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(5)
         
+        # Tabla estructurada con columna de Fecha integrada (20 + 30 + 23*4 + 24*2 = 190mm)
         pdf.set_font("Helvetica", 'B', 8)
-        pdf.cell(40, 8, "Proyecto", border=1, align='C')
-        pdf.cell(25, 8, "Costo Dir.", border=1, align='C')
-        pdf.cell(25, 8, "Imprev.", border=1, align='C')
-        pdf.cell(25, 8, "Ganancia", border=1, align='C')
-        pdf.cell(25, 8, "IVA (15%)", border=1, align='C')
-        pdf.cell(25, 8, "Venta Final", border=1, align='C')
-        pdf.cell(25, 8, "Precio Total", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.cell(20, 8, "Fecha", border=1, align='C')
+        pdf.cell(30, 8, "Proyecto", border=1, align='C')
+        pdf.cell(23, 8, "Costo Dir.", border=1, align='C')
+        pdf.cell(23, 8, "Imprev.", border=1, align='C')
+        pdf.cell(23, 8, "Ganancia", border=1, align='C')
+        pdf.cell(23, 8, "IVA (15%)", border=1, align='C')
+        pdf.cell(24, 8, "Venta Final", border=1, align='C')
+        pdf.cell(24, 8, "Precio Total", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
         
         pdf.set_font("Helvetica", '', 8)
         sum_costo = sum_imprev = sum_ganancia = sum_iva = sum_venta = sum_total = 0
         
         for _, row in df_interno.iterrows():
-            nombre = str(row['Proyecto'])[:20]
+            f_obra = row.get('Fecha', 'N/A')
+            nombre = str(row['Proyecto'])[:16]
             c_directo = row.get('Costo Directo', 0.0)
             c_imprevisto = row.get('Fondo Imprevistos', 0.0)
             c_ganancia = row.get('Ganancia Neta', 0.0)
@@ -189,22 +218,65 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             sum_venta += p_venta
             sum_total += p_total
             
-            pdf.cell(40, 8, nombre, border=1)
-            pdf.cell(25, 8, f"${c_directo:,.2f}", border=1, align='R')
-            pdf.cell(25, 8, f"${c_imprevisto:,.2f}", border=1, align='R')
-            pdf.cell(25, 8, f"${c_ganancia:,.2f}", border=1, align='R')
-            pdf.cell(25, 8, f"${iva:,.2f}", border=1, align='R')
-            pdf.cell(25, 8, f"${p_venta:,.2f}", border=1, align='R')
-            pdf.cell(25, 8, f"${p_total:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+            pdf.cell(20, 8, f_obra, border=1, align='C')
+            pdf.cell(30, 8, nombre, border=1)
+            pdf.cell(23, 8, f"${c_directo:,.2f}", border=1, align='R')
+            pdf.cell(23, 8, f"${c_imprevisto:,.2f}", border=1, align='R')
+            pdf.cell(23, 8, f"${c_ganancia:,.2f}", border=1, align='R')
+            pdf.cell(23, 8, f"${iva:,.2f}", border=1, align='R')
+            pdf.cell(24, 8, f"${p_venta:,.2f}", border=1, align='R')
+            pdf.cell(24, 8, f"${p_total:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
             
+        # Fila de Totales Sumados Conjuntos
         pdf.set_font("Helvetica", 'B', 8)
-        pdf.cell(40, 8, "TOTALES ACUMULADOS", border=1, align='R')
-        pdf.cell(25, 8, f"${sum_costo:,.2f}", border=1, align='R')
-        pdf.cell(25, 8, f"${sum_imprev:,.2f}", border=1, align='R')
-        pdf.cell(25, 8, f"${sum_ganancia:,.2f}", border=1, align='R')
-        pdf.cell(25, 8, f"${sum_iva:,.2f}", border=1, align='R')
-        pdf.cell(25, 8, f"${sum_venta:,.2f}", border=1, align='R')
-        pdf.cell(25, 8, f"${sum_total:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+        pdf.cell(50, 8, "TOTALES ACUMULADOS", border=1, align='R')
+        pdf.cell(23, 8, f"${sum_costo:,.2f}", border=1, align='R')
+        pdf.cell(23, 8, f"${sum_imprev:,.2f}", border=1, align='R')
+        pdf.cell(23, 8, f"${sum_ganancia:,.2f}", border=1, align='R')
+        pdf.cell(23, 8, f"${sum_iva:,.2f}", border=1, align='R')
+        pdf.cell(24, 8, f"${sum_venta:,.2f}", border=1, align='R')
+        pdf.cell(24, 8, f"${sum_total:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+        pdf.ln(6)
+
+        # =================================================================
+        # NUEVA SECCIÓN: REPORTE DE GANANCIAS Y PÉRDIDAS (CONSOLIDADO)
+        # =================================================================
+        pdf.set_font("Helvetica", 'B', 12)
+        pdf.cell(0, 8, "REPORTE CONSOLIDADO DE GANANCIAS Y PÉRDIDAS (P&L)", new_x="LMARGIN", new_y="NEXT", align='L')
+        pdf.ln(2)
+        
+        # Encabezados de columnas (95mm + 95mm = 190mm)
+        pdf.set_font("Helvetica", 'B', 9)
+        pdf.cell(95, 6, "GANANCIAS / INGRESOS ACUMULADOS", border=1, align='C')
+        pdf.cell(95, 6, "PÉRDIDAS / COSTOS Y RESERVAS CONSOLIDADAS", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+        
+        pdf.set_font("Helvetica", '', 9)
+        # Fila 1: Ingresos totales de venta vs Costos Directos Totales
+        pdf.cell(55, 6, " Facturación Consolidada (Subtotal):", border='LTB')
+        pdf.cell(40, 6, f"${sum_venta:,.2f} ", border='RTB', align='R')
+        pdf.cell(55, 6, " Costos Directos Totales Ejecutados:", border='LTB')
+        pdf.cell(40, 6, f"${sum_costo:,.2f} ", border='RTB', align='R', new_x="LMARGIN", new_y="NEXT")
+        
+        # Fila 2: Espacio en blanco ingresos vs Fondos Totales de resguardo
+        pdf.cell(55, 6, "", border='LTB')
+        pdf.cell(40, 6, "", border='RTB', align='R')
+        pdf.cell(55, 6, " Fondos de Imprevistos Totales Asignados:", border='LTB')
+        pdf.cell(40, 6, f"${sum_imprev:,.2f} ", border='RTB', align='R', new_x="LMARGIN", new_y="NEXT")
+        
+        # Fila 3: Totales Consolidados de bloques
+        pdf.set_font("Helvetica", 'B', 9)
+        pdf.cell(55, 6, " TOTAL INGRESOS GENERALES:", border=1)
+        pdf.cell(40, 6, f"${sum_venta:,.2f} ", border=1, align='R')
+        
+        total_egresos_todos = sum_costo + sum_imprev
+        pdf.cell(55, 6, " TOTAL INVERSIÓN LOGÍSTICA:", border=1)
+        pdf.cell(40, 6, f"${total_egresos_todos:,.2f} ", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+        
+        # Balance Neto Destacado Consolidado del Periodo
+        pdf.ln(2)
+        pdf.set_font("Helvetica", 'B', 10)
+        pdf.cell(130, 8, " BALANCE NETO / UTILIDAD OPERATIVA TOTAL:", border=1, align='R')
+        pdf.cell(60, 8, f"${sum_ganancia:,.2f} ", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
 
     temp_file = "temp_report.pdf"
     pdf.output(temp_file)
@@ -215,7 +287,7 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
 
 
 # =========================================================================
-# --- INTERFAZ GRÁFICA ---
+# --- CREACIÓN DE LA INTERFAZ CON PESTAÑAS ---
 # =========================================================================
 
 st.subheader("Sistemas de Ingeniería y Control Financiero")
@@ -227,13 +299,16 @@ tab_registro, tab_reportes, tab_historial = st.tabs(["✍️ Registrar Proyecto"
 with tab_registro:
     st.markdown("### 📝 Datos Primarios de la Obra")
     
-    col_info, col_dias, col_mes, col_anio = st.columns([2, 1, 1, 1])
+    col_info, col_dias, col_mes, col_anio, col_fecha = st.columns([2, 1, 1, 1, 1])
     nombre_proyecto = col_info.text_input("Nombre de la Obra / Cliente", placeholder="Ej: Proyecto Universidad Salesiana")
     dias_trabajo = col_dias.number_input("Días de Ejecución Previstos", min_value=1, value=4)
     
     mes_actual_idx = datetime.date.today().month - 1
     mes_proyecto = col_mes.selectbox("Mes de Imputación Contable", meses_lista, index=mes_actual_idx)
     anio_proyecto = col_anio.number_input("Año Fiscal", min_value=2020, value=datetime.date.today().year)
+    
+    # NUEVO CAMPO SOLICITADO: FECHA DE LA OBRA PARA MAYOR ORDEN
+    fecha_obra = col_fecha.date_input("Fecha de Ejecución", value=datetime.date.today())
 
     with st.expander("👥 1. Configuración de Personal (Hasta 10 Técnicos/Campos)", expanded=False):
         st.write("Edita los nombres de los roles/técnicos, ajusta sus tarifas y marca la casilla 'Asignado' para incluirlos:")
@@ -292,7 +367,7 @@ with tab_registro:
             }
             st.caption(f"Costo Viáticos del Grupo (Fuera de Ciudad): ${costo_viaticos_total:.2f}")
 
-        else: # Dentro de la ciudad
+        else: 
             st.markdown("##### 🏙️ Parámetros Dentro de la Ciudad (Cálculo Mixto)")
             col_dentro1, col_dentro2, col_dentro3 = st.columns(3)
             
@@ -366,8 +441,9 @@ with tab_registro:
                 st.error("Error: Ya existe una obra registrada bajo este nombre. Usa un identificador único.")
             else:
                 st.session_state.proyectos.append({
-                    "Mes": mes_proyecto,
                     "Año": anio_proyecto,
+                    "Mes": mes_proyecto,
+                    "Fecha": fecha_obra.strftime("%d/%m/%Y"), # Inclusión formal de la fecha estructurada
                     "Proyecto": nombre_proyecto,
                     "Costo Directo": costo_directo,
                     "Fondo Imprevistos": reserva_imprevistos, 
@@ -394,9 +470,11 @@ with tab_reportes:
     if st.session_state.proyectos:
         datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
         df_resultados = pd.DataFrame(datos_publicos).fillna(0)
-        columnas_ordenadas = ["Año", "Mes", "Proyecto", "Costo Directo", "Fondo Imprevistos", "Ganancia Neta", "PRECIO VENTA FINAL", "IVA (15%)", "PRECIO TOTAL"]
+        
+        # Estructuración y reordenamiento de columnas incluyendo Fecha
+        columnas_ordenadas = ["Año", "Mes", "Fecha", "Proyecto", "Costo Directo", "Fondo Imprevistos", "Ganancia Neta", "PRECIO VENTA FINAL", "IVA (15%)", "PRECIO TOTAL"]
         df_resultados = df_resultados[[col for col in columnas_ordenadas if col in df_resultados.columns]]
-        formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col not in ["Mes", "Proyecto", "Año"]}
+        formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col not in ["Mes", "Proyecto", "Año", "Fecha"]}
 
         st.markdown("### 🗂️ Segmentación y Estructuración de Filtros")
         tipo_reporte = st.radio(
