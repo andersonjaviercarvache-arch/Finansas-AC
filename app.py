@@ -51,10 +51,15 @@ costo_materiales = st.number_input("Costo de Materiales o Equipos ($)", min_valu
 
 st.write("---")
 
-# --- CÁLCULO REACTIVO PARA LA SUGERENCIA ---
-st.subheader("4. Sugerencia de Precio")
+# --- CÁLCULO DE MÁRGENES Y PRECIO FINAL ---
+st.subheader("4. Ajuste de Márgenes y Precio de Venta")
 
-# La app calcula todo en tiempo real
+# Controles para ajustar los porcentajes (puedes bajarlos a 0 o subirlos a tu gusto)
+col_pct1, col_pct2 = st.columns(2)
+pct_imprevistos = col_pct1.slider("Porcentaje para Imprevistos (%)", min_value=0, max_value=100, value=20, step=5)
+pct_ganancia = col_pct2.slider("Porcentaje de Ganancia (%)", min_value=0, max_value=100, value=40, step=5)
+
+# Cálculos matemáticos en tiempo real
 personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
 num_personas = len(personal_activo)
 
@@ -62,37 +67,37 @@ costo_mano_obra = personal_activo["Costo Día ($)"].sum() * dias_trabajo
 costo_viaticos_total = viatico_diario_pp * num_personas * dias_trabajo
 costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
 
-reserva_imprevistos = costo_directo * 0.20
-ganancia_esperada = costo_directo * 0.40
+reserva_imprevistos = costo_directo * (pct_imprevistos / 100)
+ganancia_esperada = costo_directo * (pct_ganancia / 100)
 
-# Sugerencia calculada
-precio_sugerido = costo_directo + reserva_imprevistos + ganancia_esperada
+# PRECIO DE VENTA FINAL (Sin IVA)
+precio_venta_final = costo_directo + reserva_imprevistos + ganancia_esperada
 
-# Mostrar desglose en tiempo real
+# CÁLCULO DEL IVA (15%) Y PRECIO TOTAL
+iva_monto = precio_venta_final * 0.15
+precio_total_con_iva = precio_venta_final + iva_monto
+
+# Mostrar desglose en pantalla
 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
 col_s1.metric("Costo Directo", f"${costo_directo:,.2f}")
-col_s2.metric("Imprevistos (20%)", f"${reserva_imprevistos:,.2f}")
-col_s3.metric("Ganancia Base (40%)", f"${ganancia_esperada:,.2f}")
-col_s4.metric("PRECIO SUGERIDO", f"${precio_sugerido:,.2f}")
+col_s2.metric(f"Imprevistos ({pct_imprevistos}%)", f"${reserva_imprevistos:,.2f}")
+col_s3.metric(f"Ganancia ({pct_ganancia}%)", f"${ganancia_esperada:,.2f}")
+col_s4.metric("PRECIO DE VENTA FINAL", f"${precio_venta_final:,.2f}")
 
-st.info(f"💡 Según tu estructura de costos, te sugerimos cobrar un mínimo de **${precio_sugerido:,.2f}**.")
+# Mostrar cuadro final con Impuestos
+st.success(f"**PRECIO DE VENTA FINAL:** ${precio_venta_final:,.2f}  |  **IVA (15%):** ${iva_monto:,.2f}  |  **PRECIO TOTAL:** ${precio_total_con_iva:,.2f}")
 
-# 5. Definición del Precio Final y Guardado
-st.write("¿Deseas redondear o ajustar este precio para tu cliente?")
-precio_final = st.number_input("Ingresa el Precio Final de Venta ($)", min_value=0.0, value=float(precio_sugerido), step=10.0)
-
+# Botón para guardar el proyecto en el registro mensual
 if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
-        # Calculamos la utilidad real basada en el precio que finalmente decidiste cobrar
-        utilidad_real = precio_final - costo_directo - reserva_imprevistos
-        
         st.session_state.proyectos.append({
             "Proyecto": nombre_proyecto,
             "Costo Directo": costo_directo,
-            "Imprevistos (20%)": reserva_imprevistos,
-            "Precio Sugerido": precio_sugerido,
-            "PRECIO VENTA": precio_final,
-            "Utilidad Real": utilidad_real
+            f"Imprevistos ({pct_imprevistos}%)": reserva_imprevistos,
+            f"Ganancia ({pct_ganancia}%)": ganancia_esperada,
+            "PRECIO VENTA FINAL": precio_venta_final,
+            "IVA (15%)": iva_monto,
+            "PRECIO TOTAL": precio_total_con_iva
         })
         st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente.")
     else:
@@ -106,28 +111,36 @@ if st.session_state.proyectos:
     # Crear y mostrar tabla resumen
     df_resultados = pd.DataFrame(st.session_state.proyectos)
     
-    # Formato visual
-    df_mostrar = df_resultados.style.format({
-        "Costo Directo": "${:,.2f}",
-        "Imprevistos (20%)": "${:,.2f}",
-        "Precio Sugerido": "${:,.2f}",
-        "PRECIO VENTA": "${:,.2f}",
-        "Utilidad Real": "${:,.2f}"
-    })
+    # Formato visual para que se vea como moneda
+    formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col != "Proyecto"}
+    df_mostrar = df_resultados.style.format(formato_moneda)
     
     st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
     
-    # Sumatorias
+    # Sumatorias para las tarjetas finales
     total_costos = df_resultados["Costo Directo"].sum()
-    total_imprevistos = df_resultados["Imprevistos (20%)"].sum()
-    total_utilidad = df_resultados["Utilidad Real"].sum()
-    total_facturacion = df_resultados["PRECIO VENTA"].sum()
+    
+    # Manejar las sumatorias dinámicas de imprevistos y ganancias (por si cambian los porcentajes entre proyectos)
+    cols_imprevistos = [col for col in df_resultados.columns if "Imprevistos" in col]
+    cols_ganancias = [col for col in df_resultados.columns if "Ganancia" in col]
+    
+    total_imprevistos = df_resultados[cols_imprevistos].sum().sum()
+    total_utilidad = df_resultados[cols_ganancias].sum().sum()
+    
+    total_venta_final = df_resultados["PRECIO VENTA FINAL"].sum()
+    total_iva = df_resultados["IVA (15%)"].sum()
+    total_recaudado = df_resultados["PRECIO TOTAL"].sum()
     
     # Tarjetas resumen
-    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    col_m1.metric("Gastos Directos", f"${total_costos:,.2f}")
-    col_m2.metric("Fondo de Emergencias", f"${total_imprevistos:,.2f}")
-    col_m3.metric("Utilidad Neta Real", f"${total_utilidad:,.2f}")
-    col_m4.metric("Facturación Total", f"${total_facturacion:,.2f}")
+    st.subheader("Resumen General")
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1.metric("Total Costos Directos", f"${total_costos:,.2f}")
+    col_m2.metric("Total Fondo Emergencias", f"${total_imprevistos:,.2f}")
+    col_m3.metric("Total Ganancia Neta", f"${total_utilidad:,.2f}")
+    
+    col_t1, col_t2, col_t3 = st.columns(3)
+    col_t1.metric("Subtotal (Venta Final)", f"${total_venta_final:,.2f}")
+    col_t2.metric("IVA por Declarar", f"${total_iva:,.2f}")
+    col_t3.metric("Total a Cobrar a Clientes", f"${total_recaudado:,.2f}")
 else:
     st.info("Aún no tienes proyectos guardados. Configura uno en la parte superior y presiona 'Guardar Proyecto'.")
