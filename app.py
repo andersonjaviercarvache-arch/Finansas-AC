@@ -33,7 +33,7 @@ df_personal_editado = st.data_editor(df_personal_base, use_container_width=True,
 
 st.write("---")
 
-# --- NUEVA SECCIÓN DE VIÁTICOS INDEPENDIENTES ---
+# --- SECCIÓN DE VIÁTICOS INDEPENDIENTES ---
 st.subheader("2. Desglose de Viáticos (Por Persona)")
 st.write("Ingresa el valor diario y cuántos días aplica cada rubro (por defecto toma los días de la obra).")
 
@@ -132,10 +132,12 @@ if st.session_state.proyectos:
     df_mostrar = df_resultados.style.format(formato_moneda)
     st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
     
-    # --- LÓGICA DE EXPORTACIÓN A PDF EN FLUJO CONTINUO ---
+    # --- LÓGICA DE EXPORTACIÓN A PDF CENTRADO PERFECTO (190mm TOTAL) ---
     def generar_pdf(lista_proyectos, df_interno):
-        pdf = FPDF()
-        pdf.add_page() # Se añade solo una página inicial. El resto fluye hacia abajo.
+        # A4 = 210mm ancho. Márgenes 10mm L/R = 190mm de área de trabajo exacto.
+        pdf = FPDF(orientation="P", unit="mm", format="A4")
+        pdf.set_margins(left=10, top=15, right=10)
+        pdf.add_page() 
         
         # ==========================================
         # 1. COTIZACIÓN CLIENTE
@@ -144,21 +146,22 @@ if st.session_state.proyectos:
         pdf.cell(0, 8, "COTIZACIÓN COMERCIAL - LATITUD SOLAR", new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(5)
         
+        # Total Anchos = 85 + 35 + 35 + 35 = 190
         pdf.set_font("Helvetica", 'B', 10)
-        pdf.cell(90, 8, "Descripción del Proyecto", border=1, align='C')
+        pdf.cell(85, 8, "Descripción del Proyecto", border=1, align='C')
         pdf.cell(35, 8, "Subtotal", border=1, align='C')
-        pdf.cell(30, 8, "IVA (15%)", border=1, align='C')
+        pdf.cell(35, 8, "IVA (15%)", border=1, align='C')
         pdf.cell(35, 8, "Total a Pagar", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
         
         pdf.set_font("Helvetica", '', 9)
         for _, row in df_interno.iterrows():
-            nombre = str(row['Proyecto'])[:45]
-            pdf.cell(90, 8, nombre, border=1)
+            nombre = str(row['Proyecto'])[:40]
+            pdf.cell(85, 8, nombre, border=1)
             pdf.cell(35, 8, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, align='R')
-            pdf.cell(30, 8, f"${row['IVA (15%)']:,.2f}", border=1, align='R')
+            pdf.cell(35, 8, f"${row['IVA (15%)']:,.2f}", border=1, align='R')
             pdf.cell(35, 8, f"${row['PRECIO TOTAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
             
-        pdf.ln(2)
+        pdf.ln(3)
         pdf.set_font("Helvetica", 'I', 8)
         pdf.cell(0, 8, "Nota: Los valores incluyen mano de obra, viáticos y equipos acordados.", new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(10)
@@ -174,42 +177,42 @@ if st.session_state.proyectos:
             pdf.set_font("Helvetica", 'B', 10)
             pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Duración Obra: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
             
-            # Tabla 1: Personal
+            # Tabla 1: Personal (Total = 70 + 60 + 60 = 190)
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(0, 6, "Costo de Personal (Asignado a la obra):", new_x="LMARGIN", new_y="NEXT")
             
-            pdf.set_font("Helvetica", 'B', 8)
-            pdf.cell(60, 6, "Rol", border=1)
-            pdf.cell(40, 6, "Costo Diario por Persona", border=1)
-            pdf.cell(50, 6, "Total Rol (Todos los días)", border=1, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", 'B', 9)
+            pdf.cell(70, 6, "Rol", border=1)
+            pdf.cell(60, 6, "Costo Diario por Persona", border=1, align='C')
+            pdf.cell(60, 6, "Total Rol (Todos los días)", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
             
-            pdf.set_font("Helvetica", '', 8)
+            pdf.set_font("Helvetica", '', 9)
             for persona in p["_Personal"]:
                 total_rol = persona["Costo Día ($)"] * p["_Dias"]
-                pdf.cell(60, 6, str(persona["Rol"]), border=1)
-                pdf.cell(40, 6, f"${persona['Costo Día ($)']:,.2f}", border=1, align='C')
-                pdf.cell(50, 6, f"${total_rol:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(70, 6, str(persona["Rol"]), border=1)
+                pdf.cell(60, 6, f"${persona['Costo Día ($)']:,.2f}", border=1, align='C')
+                pdf.cell(60, 6, f"${total_rol:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             
             pdf.ln(3)
             
-            # Tabla 2: Viáticos 
+            # Tabla 2: Viáticos (Total = 60 + 40 + 30 + 60 = 190)
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(0, 6, "Desglose de Viáticos (Calculado para todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
             
-            pdf.set_font("Helvetica", 'B', 8)
-            pdf.cell(45, 6, "Concepto", border=1)
-            pdf.cell(35, 6, "Diario (c/u)", border=1, align='C')
-            pdf.cell(20, 6, "Días", border=1, align='C')
-            pdf.cell(50, 6, "Costo Total del Grupo", border=1, new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", 'B', 9)
+            pdf.cell(60, 6, "Concepto", border=1)
+            pdf.cell(40, 6, "Diario (c/u)", border=1, align='C')
+            pdf.cell(30, 6, "Días", border=1, align='C')
+            pdf.cell(60, 6, "Costo Total del Grupo", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
             
-            pdf.set_font("Helvetica", '', 8)
+            pdf.set_font("Helvetica", '', 9)
             num_personas = len(p["_Personal"])
             for concepto, datos in p["_Viaticos"].items():
                 total_concepto = datos["costo"] * datos["dias"] * num_personas
-                pdf.cell(45, 6, concepto, border=1)
-                pdf.cell(35, 6, f"${datos['costo']:,.2f}", border=1, align='C')
-                pdf.cell(20, 6, str(datos['dias']), border=1, align='C')
-                pdf.cell(50, 6, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(60, 6, concepto, border=1)
+                pdf.cell(40, 6, f"${datos['costo']:,.2f}", border=1, align='C')
+                pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
+                pdf.cell(60, 6, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             
             pdf.ln(3)
             # Otros
@@ -228,9 +231,10 @@ if st.session_state.proyectos:
         col_imprevisto = [c for c in df_interno.columns if "Imprevistos" in c][0]
         col_ganancia = [c for c in df_interno.columns if "Ganancia" in c][0]
         
+        # Total Anchos = 50 + 35 + 35 + 35 + 35 = 190
         pdf.set_font("Helvetica", 'B', 8)
         pdf.cell(50, 8, "Proyecto", border=1, align='C')
-        pdf.cell(30, 8, "Costo Directo", border=1, align='C')
+        pdf.cell(35, 8, "Costo Directo", border=1, align='C')
         pdf.cell(35, 8, "Imprevistos", border=1, align='C')
         pdf.cell(35, 8, "Ganancia Neta", border=1, align='C')
         pdf.cell(35, 8, "Precio Venta", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
@@ -239,7 +243,7 @@ if st.session_state.proyectos:
         for _, row in df_interno.iterrows():
             nombre = str(row['Proyecto'])[:25]
             pdf.cell(50, 8, nombre, border=1)
-            pdf.cell(30, 8, f"${row['Costo Directo']:,.2f}", border=1, align='R')
+            pdf.cell(35, 8, f"${row['Costo Directo']:,.2f}", border=1, align='R')
             pdf.cell(35, 8, f"${row[col_imprevisto]:,.2f}", border=1, align='R')
             pdf.cell(35, 8, f"${row[col_ganancia]:,.2f}", border=1, align='R')
             pdf.cell(35, 8, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
@@ -256,7 +260,7 @@ if st.session_state.proyectos:
     # Procesar descarga
     pdf_generado = generar_pdf(st.session_state.proyectos, df_resultados)
 
-    st.write("Genera tu archivo PDF. Toda la información ahora se presenta de manera continua en un solo flujo documental.")
+    st.write("Genera tu archivo PDF. Los márgenes ahora están unificados al 100% (ancho exacto de 190mm) para un aspecto limpio y centrado.")
     st.download_button(
         label="📥 Descargar Formato Completo (PDF)",
         data=pdf_generado,
