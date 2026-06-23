@@ -7,18 +7,15 @@ import json
 import plotly.express as px
 
 # =========================================================================
-# --- CONFIGURACIÓN DE PÁGINA Y ESTILOS CSS (TEMA AZUL CORPORATIVO) ---
+# --- CONFIGURACIÓN DE PÁGINA Y ESTILOS CSS (ADAPTABLE CLARO/OSCURO) ---
 # =========================================================================
 st.set_page_config(page_title="Gestor Financiero", layout="wide", page_icon="📊")
 
 st.markdown("""
     <style>
-    /* Fondo general del Dashboard */
-    .stApp {
-        background-color: #f4f6f9;
-    }
+    /* Dejamos que el fondo de la app respete el tema nativo (Claro/Oscuro) de Streamlit */
     
-    /* Barra lateral azul */
+    /* Barra lateral azul corporativo (se mantiene oscura para contrastar) */
     [data-testid="stSidebar"] {
         background-color: #1f3c88 !important;
     }
@@ -26,20 +23,27 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    /* Tarjetas de Métricas (KPIs) con borde azul */
+    /* Tarjetas de Métricas (KPIs) adaptables al tema del usuario */
     div[data-testid="stMetric"] {
-        background-color: #ffffff;
+        background-color: var(--secondary-background-color); /* Automático: Blanco en modo claro, Gris oscuro en modo oscuro */
         border-radius: 6px;
         padding: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         border-left: 4px solid #1f77b4;
+    }
+    
+    /* Título principal adaptable */
+    .titulo-dashboard {
+        text-align: center;
+        color: var(--text-color); /* Se pone blanco en modo oscuro y negro en modo claro */
+        margin-bottom: 0;
     }
     
     /* Ocultar elementos por defecto de Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 
-    /* Botones primarios en azul */
+    /* Botones primarios en azul corporativo */
     button[kind="primary"] {
         background-color: #1f77b4 !important;
         color: white !important;
@@ -53,8 +57,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Título Limpio 
-st.markdown("<h2 style='text-align: center; color: #1f3c88; margin-bottom: 0;'>📊 Sistema de Ingeniería de Costos y Control Financiero</h2>", unsafe_allow_html=True)
+# Título Limpio Inteligente
+st.markdown("<h2 class='titulo-dashboard'>📊 Sistema de Ingeniería de Costos y Control Financiero</h2>", unsafe_allow_html=True)
 st.write("---")
 
 # --- CONFIGURACIÓN DE LA BASE DE DATOS LOCAL (JSON) ---
@@ -377,7 +381,7 @@ with tab_dashboard:
                 xaxis_title="", yaxis_title="",
                 legend_title="", hovermode="x unified", margin=dict(l=0, r=0, t=20, b=0)
             )
-            # st.plotly_chart con config para ocultar la barra de herramientas
+            # Desactivar la barra de herramientas molesta (zoom, descarga, etc.)
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
         with col_graf2:
