@@ -35,7 +35,7 @@ st.write("---")
 
 # --- SECCIÓN DE VIÁTICOS INDEPENDIENTES (CON HOSPEDAJE) ---
 st.subheader("2. Desglose de Viáticos (Por Persona)")
-st.write("Ingresa el valor diario y cuántos días aplica cada rubro (por defecto toma los días de la obra).")
+st.write("Ingresa el valor diario y cuántos días aplica cada rubro.")
 
 col_v1, col_v2, col_v3, col_v4 = st.columns(4)
 
@@ -65,7 +65,7 @@ total_hidra_pp = hidra_costo * hidra_dias
 total_hosp_pp = hosp_costo * hosp_dias
 
 viatico_total_pp = total_alim_pp + total_mov_pp + total_hidra_pp + total_hosp_pp
-st.info(f"**Total acumulado de viáticos por cada persona (durante toda la obra):** ${viatico_total_pp:.2f}")
+st.info(f"**Total acumulado de viáticos por cada persona:** ${viatico_total_pp:.2f}")
 
 st.write("---")
 
@@ -94,9 +94,8 @@ ganancia_calculada = costo_directo * (pct_ganancia_sugerida / 100)
 precio_sugerido = costo_directo + reserva_imprevistos + ganancia_calculada
 
 st.markdown("### 🎯 Definir Precio Final")
-st.info(f"💡 El precio base sugerido según tus márgenes es de **${precio_sugerido:,.2f}**.")
+st.info(f"💡 El precio base sugerido es de **${precio_sugerido:,.2f}**.")
 
-# Campo editable para el precio final
 precio_venta_final = st.number_input(
     "Ingresa el Precio de Venta a Cobrar (Sin IVA) ($)", 
     min_value=0.0, 
@@ -104,7 +103,7 @@ precio_venta_final = st.number_input(
     step=10.0
 )
 
-# Recalcular ganancia real según el precio que el usuario decidió colocar
+# Ganancia real ajustada al precio final editado
 ganancia_real = precio_venta_final - costo_directo - reserva_imprevistos
 
 iva_monto = precio_venta_final * 0.15
@@ -113,7 +112,7 @@ precio_total_con_iva = precio_venta_final + iva_monto
 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
 col_s1.metric("Costo Directo", f"${costo_directo:,.2f}")
 col_s2.metric(f"Imprevistos ({pct_imprevistos}%)", f"${reserva_imprevistos:,.2f}")
-col_s3.metric("Ganancia Neta Ajustada", f"${ganancia_real:,.2f}")
+col_s3.metric("Ganancia Neta", f"${ganancia_real:,.2f}")
 col_s4.metric("PRECIO DE VENTA FINAL", f"${precio_venta_final:,.2f}")
 
 st.success(f"**PRECIO DE VENTA FINAL:** ${precio_venta_final:,.2f}  |  **IVA (15%):** ${iva_monto:,.2f}  |  **PRECIO TOTAL:** ${precio_total_con_iva:,.2f}")
@@ -122,13 +121,13 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
         nombres_existentes = [p["Proyecto"] for p in st.session_state.proyectos]
         if nombre_proyecto in nombres_existentes:
-            st.error("Ya existe un proyecto con este nombre. Por favor, usa un nombre distinto (Ej: Proyecto Aroma Cacao V2).")
+            st.error("Ya existe un proyecto con este nombre. Por favor, usa un nombre distinto.")
         else:
             st.session_state.proyectos.append({
                 "Proyecto": nombre_proyecto,
                 "Costo Directo": costo_directo,
-                f"Imprevistos ({pct_imprevistos}%)": reserva_imprevistos,
-                "Ganancia Neta": ganancia_real,
+                "Fondo Imprevistos": reserva_imprevistos, # Nombres de columna fijos
+                "Ganancia Neta": ganancia_real,           # Nombres de columna fijos
                 "PRECIO VENTA FINAL": precio_venta_final,
                 "IVA (15%)": iva_monto,
                 "PRECIO TOTAL": precio_total_con_iva,
@@ -145,7 +144,7 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
             st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente.")
             st.rerun()
     else:
-        st.error("Por favor, ingresa el nombre del proyecto en la parte superior.")
+        st.error("Por favor, ingresa el nombre del proyecto.")
 
 # --- SECCIÓN: REPORTE MENSUAL Y DESCARGAS ---
 st.write("---")
@@ -155,6 +154,9 @@ if st.session_state.proyectos:
     # 1. Mostrar Tabla General
     datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
     df_resultados = pd.DataFrame(datos_publicos)
+    
+    # Rellenar cualquier NaN con 0 para evitar errores visuales
+    df_resultados.fillna(0, inplace=True)
     
     formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col != "Proyecto"}
     df_mostrar = df_resultados.style.format(formato_moneda)
@@ -237,7 +239,6 @@ if st.session_state.proyectos:
                 pdf.cell(60, 6, f"${persona['Costo Día ($)']:,.2f}", border=1, align='C')
                 pdf.cell(60, 6, f"${total_rol:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             
-            # Fila de Total Personal
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(130, 6, "TOTAL COSTO PERSONAL", border=1, align='R')
             pdf.cell(60, 6, f"${suma_personal:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
@@ -265,7 +266,6 @@ if st.session_state.proyectos:
                 pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
                 pdf.cell(60, 6, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
                 
-            # Fila de Total Viáticos
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(130, 6, "TOTAL VIÁTICOS", border=1, align='R')
             pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
@@ -284,9 +284,6 @@ if st.session_state.proyectos:
         pdf.cell(0, 8, "REPORTE INTERNO DE RENTABILIDAD", new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(5)
         
-        col_imprevisto = [c for c in df_interno.columns if "Imprevistos" in c][0]
-        col_ganancia = [c for c in df_interno.columns if "Ganancia" in c][0]
-        
         pdf.set_font("Helvetica", 'B', 8)
         pdf.cell(50, 8, "Proyecto", border=1, align='C')
         pdf.cell(35, 8, "Costo Directo", border=1, align='C')
@@ -297,11 +294,18 @@ if st.session_state.proyectos:
         pdf.set_font("Helvetica", '', 8)
         for _, row in df_interno.iterrows():
             nombre = str(row['Proyecto'])[:25]
+            
+            # Seguridad adicional por si recargas la página y hay datos viejos en memoria
+            c_directo = row.get('Costo Directo', 0.0)
+            c_imprevisto = row.get('Fondo Imprevistos', 0.0)
+            c_ganancia = row.get('Ganancia Neta', 0.0)
+            p_venta = row.get('PRECIO VENTA FINAL', 0.0)
+            
             pdf.cell(50, 8, nombre, border=1)
-            pdf.cell(35, 8, f"${row['Costo Directo']:,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${row[col_imprevisto]:,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${row[col_ganancia]:,.2f}", border=1, align='R')
-            pdf.cell(35, 8, f"${row['PRECIO VENTA FINAL']:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
+            pdf.cell(35, 8, f"${c_directo:,.2f}", border=1, align='R')
+            pdf.cell(35, 8, f"${c_imprevisto:,.2f}", border=1, align='R')
+            pdf.cell(35, 8, f"${c_ganancia:,.2f}", border=1, align='R')
+            pdf.cell(35, 8, f"${p_venta:,.2f}", border=1, new_x="LMARGIN", new_y="NEXT", align='R')
 
         temp_file = "temp_report.pdf"
         pdf.output(temp_file)
