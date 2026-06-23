@@ -141,10 +141,8 @@ if st.session_state.proyectos:
     
     # --- LÓGICA DE EXPORTACIÓN A PDF CENTRADO PERFECTO (190mm TOTAL) ---
     def generar_pdf(lista_proyectos, df_interno):
-        # A4 = 210mm ancho. Márgenes 10mm L/R = 190mm de área de trabajo exacto.
         pdf = FPDF(orientation="P", unit="mm", format="A4")
         pdf.set_margins(left=10, top=15, right=10)
-        # Se añade la página UNA sola vez. El resto fluye continuamente.
         pdf.add_page() 
         
         # ==========================================
@@ -154,7 +152,6 @@ if st.session_state.proyectos:
         pdf.cell(0, 8, "COTIZACIÓN COMERCIAL - LATITUD SOLAR", new_x="LMARGIN", new_y="NEXT", align='C')
         pdf.ln(5)
         
-        # Total Anchos = 85 + 35 + 35 + 35 = 190
         pdf.set_font("Helvetica", 'B', 10)
         pdf.cell(85, 8, "Descripción del Proyecto", border=1, align='C')
         pdf.cell(35, 8, "Subtotal", border=1, align='C')
@@ -185,7 +182,7 @@ if st.session_state.proyectos:
             pdf.set_font("Helvetica", 'B', 10)
             pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Duración Obra: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
             
-            # Tabla 1: Personal (Total = 70 + 60 + 60 = 190)
+            # --- Tabla 1: Personal ---
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(0, 6, "Costo de Personal (Asignado a la obra):", new_x="LMARGIN", new_y="NEXT")
             
@@ -195,15 +192,22 @@ if st.session_state.proyectos:
             pdf.cell(60, 6, "Total Rol (Todos los días)", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
             
             pdf.set_font("Helvetica", '', 9)
+            suma_personal = 0
             for persona in p["_Personal"]:
                 total_rol = persona["Costo Día ($)"] * p["_Dias"]
+                suma_personal += total_rol
                 pdf.cell(70, 6, str(persona["Rol"]), border=1)
                 pdf.cell(60, 6, f"${persona['Costo Día ($)']:,.2f}", border=1, align='C')
                 pdf.cell(60, 6, f"${total_rol:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             
+            # Fila de Total de Personal (130 de ancho = 70 + 60, alineado con la última celda de 60)
+            pdf.set_font("Helvetica", 'B', 9)
+            pdf.cell(130, 6, "TOTAL COSTO PERSONAL", border=1, align='R')
+            pdf.cell(60, 6, f"${suma_personal:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+            
             pdf.ln(3)
             
-            # Tabla 2: Viáticos (Total = 60 + 40 + 30 + 60 = 190)
+            # --- Tabla 2: Viáticos ---
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(0, 6, "Desglose de Viáticos (Calculado para todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
             
@@ -215,12 +219,19 @@ if st.session_state.proyectos:
             
             pdf.set_font("Helvetica", '', 9)
             num_personas = len(p["_Personal"])
+            suma_viaticos = 0
             for concepto, datos in p["_Viaticos"].items():
                 total_concepto = datos["costo"] * datos["dias"] * num_personas
+                suma_viaticos += total_concepto
                 pdf.cell(60, 6, concepto, border=1)
                 pdf.cell(40, 6, f"${datos['costo']:,.2f}", border=1, align='C')
                 pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
                 pdf.cell(60, 6, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
+                
+            # Fila de Total de Viáticos (130 de ancho = 60 + 40 + 30, alineado con la última celda de 60)
+            pdf.set_font("Helvetica", 'B', 9)
+            pdf.cell(130, 6, "TOTAL VIÁTICOS", border=1, align='R')
+            pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             
             pdf.ln(3)
             # Otros
@@ -239,7 +250,6 @@ if st.session_state.proyectos:
         col_imprevisto = [c for c in df_interno.columns if "Imprevistos" in c][0]
         col_ganancia = [c for c in df_interno.columns if "Ganancia" in c][0]
         
-        # Total Anchos = 50 + 35 + 35 + 35 + 35 = 190
         pdf.set_font("Helvetica", 'B', 8)
         pdf.cell(50, 8, "Proyecto", border=1, align='C')
         pdf.cell(35, 8, "Costo Directo", border=1, align='C')
