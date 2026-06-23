@@ -74,12 +74,12 @@ costo_materiales = st.number_input("Costo de Materiales o Equipos ($)", min_valu
 
 st.write("---")
 
-# --- CÁLCULO DE MÁRGENES Y PRECIO FINAL ---
+# --- CÁLCULO DE MÁRGENES Y PRECIO FINAL EDITABLE ---
 st.subheader("4. Ajuste de Márgenes y Precio de Venta")
 
 col_pct1, col_pct2 = st.columns(2)
 pct_imprevistos = col_pct1.slider("Porcentaje para Imprevistos (%)", min_value=0, max_value=100, value=20, step=5)
-pct_ganancia = col_pct2.slider("Porcentaje de Ganancia (%)", min_value=0, max_value=100, value=40, step=5)
+pct_ganancia_sugerida = col_pct2.slider("Porcentaje de Ganancia Esperada (%)", min_value=0, max_value=100, value=40, step=5)
 
 personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
 num_personas = len(personal_activo)
@@ -89,23 +89,37 @@ costo_viaticos_total = viatico_total_pp * num_personas
 costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
 
 reserva_imprevistos = costo_directo * (pct_imprevistos / 100)
-ganancia_esperada = costo_directo * (pct_ganancia / 100)
+ganancia_calculada = costo_directo * (pct_ganancia_sugerida / 100)
 
-precio_venta_final = costo_directo + reserva_imprevistos + ganancia_esperada
+precio_sugerido = costo_directo + reserva_imprevistos + ganancia_calculada
+
+st.markdown("### 🎯 Definir Precio Final")
+st.info(f"💡 El precio base sugerido según tus márgenes es de **${precio_sugerido:,.2f}**.")
+
+# Campo editable para el precio final
+precio_venta_final = st.number_input(
+    "Ingresa el Precio de Venta a Cobrar (Sin IVA) ($)", 
+    min_value=0.0, 
+    value=float(precio_sugerido), 
+    step=10.0
+)
+
+# Recalcular ganancia real según el precio que el usuario decidió colocar
+ganancia_real = precio_venta_final - costo_directo - reserva_imprevistos
+
 iva_monto = precio_venta_final * 0.15
 precio_total_con_iva = precio_venta_final + iva_monto
 
 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
 col_s1.metric("Costo Directo", f"${costo_directo:,.2f}")
 col_s2.metric(f"Imprevistos ({pct_imprevistos}%)", f"${reserva_imprevistos:,.2f}")
-col_s3.metric(f"Ganancia ({pct_ganancia}%)", f"${ganancia_esperada:,.2f}")
+col_s3.metric("Ganancia Neta Ajustada", f"${ganancia_real:,.2f}")
 col_s4.metric("PRECIO DE VENTA FINAL", f"${precio_venta_final:,.2f}")
 
 st.success(f"**PRECIO DE VENTA FINAL:** ${precio_venta_final:,.2f}  |  **IVA (15%):** ${iva_monto:,.2f}  |  **PRECIO TOTAL:** ${precio_total_con_iva:,.2f}")
 
 if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
-        # Validar que el nombre no exista para evitar confusiones al eliminar o descargar
         nombres_existentes = [p["Proyecto"] for p in st.session_state.proyectos]
         if nombre_proyecto in nombres_existentes:
             st.error("Ya existe un proyecto con este nombre. Por favor, usa un nombre distinto (Ej: Proyecto Aroma Cacao V2).")
@@ -114,7 +128,7 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
                 "Proyecto": nombre_proyecto,
                 "Costo Directo": costo_directo,
                 f"Imprevistos ({pct_imprevistos}%)": reserva_imprevistos,
-                f"Ganancia ({pct_ganancia}%)": ganancia_esperada,
+                "Ganancia Neta": ganancia_real,
                 "PRECIO VENTA FINAL": precio_venta_final,
                 "IVA (15%)": iva_monto,
                 "PRECIO TOTAL": precio_total_con_iva,
@@ -302,7 +316,6 @@ if st.session_state.proyectos:
         opciones_descarga = ["Todos los proyectos"] + nombres_proyectos
         seleccion_descarga = st.selectbox("Selecciona qué deseas exportar al PDF:", opciones_descarga)
         
-        # Filtramos los datos según la selección
         if seleccion_descarga == "Todos los proyectos":
             lista_a_exportar = st.session_state.proyectos
             df_a_exportar = df_resultados
@@ -312,7 +325,6 @@ if st.session_state.proyectos:
             df_a_exportar = df_resultados[df_resultados["Proyecto"] == seleccion_descarga]
             nombre_archivo = f"Cotizacion_{seleccion_descarga.replace(' ', '_')}.pdf"
             
-        # Generar el PDF con los datos filtrados
         pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar)
         
         st.download_button(
