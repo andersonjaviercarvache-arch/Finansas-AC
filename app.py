@@ -7,7 +7,7 @@ import json
 import plotly.express as px
 
 # =========================================================================
-# --- CONFIGURACIÓN DE PÁGINA Y ESTILOS CSS (ADAPTABLE CLARO/OSCURO) ---
+# --- CONFIGURACIÓN DE PÁGINA Y ESTILOS CSS (TEMA AZUL CORPORATIVO) ---
 # =========================================================================
 st.set_page_config(page_title="Gestor Financiero", layout="wide", page_icon="📊")
 
@@ -15,7 +15,7 @@ st.markdown("""
     <style>
     /* Dejamos que el fondo de la app respete el tema nativo (Claro/Oscuro) de Streamlit */
     
-    /* Barra lateral azul corporativo (se mantiene oscura para contrastar) */
+    /* Barra lateral azul corporativo */
     [data-testid="stSidebar"] {
         background-color: #1f3c88 !important;
     }
@@ -198,8 +198,10 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             pdf.ln(3)
             
+            # Incorporación del campo Traslado de Equipos (Usando .get para compatibilidad con data antigua)
             pdf.set_font("Helvetica", '', 9)
-            pdf.cell(0, 6, f"Materiales y Otros Costos: ${p['_Materiales']:,.2f}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 6, f"Materiales y Otros Costos: ${p.get('_Materiales', 0.0):,.2f}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 6, f"Traslado de Equipos: ${p.get('_Traslado', 0.0):,.2f}", new_x="LMARGIN", new_y="NEXT")
             pdf.ln(6)
             
             pdf.set_font("Helvetica", 'B', 12)
@@ -329,7 +331,6 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
     os.remove(temp_file)
     return pdf_bytes
 
-
 # =========================================================================
 # --- INTERFAZ PRINCIPAL CON PESTAÑAS MODERNAS ---
 # =========================================================================
@@ -372,7 +373,6 @@ with tab_dashboard:
                                           var_name="Indicador", value_name="Monto")
             df_bar["Indicador"] = df_bar["Indicador"].replace({"PRECIO VENTA FINAL": "Ingresos", "Costo Operativo": "Costos"})
             
-            # Gráfico de Barras con la paleta Azul
             fig_bar = px.bar(df_bar, x="Mes", y="Monto", color="Indicador", barmode="group",
                              color_discrete_map={"Ingresos": "#1f77b4", "Costos": "#aec7e8"},
                              text_auto='.2s')
@@ -382,7 +382,6 @@ with tab_dashboard:
                 xaxis_title="", yaxis_title="",
                 legend_title="", hovermode="x unified", margin=dict(l=0, r=0, t=20, b=0)
             )
-            # Desactivar la barra de herramientas interactiva molesta
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
         with col_graf2:
@@ -392,14 +391,12 @@ with tab_dashboard:
                 "Monto": [t_costo, t_iva, t_ganancia]
             })
             
-            # Gráfico de dona con la paleta Azul / Naranja
             fig_donut = px.pie(df_pie, values='Monto', names='Categoría', hole=0.6,
                                color='Categoría',
                                color_discrete_map={"Costo Operativo": "#aec7e8", "IVA Retenido": "#ff7f0e", "Utilidad Neta": "#1f77b4"})
             
             fig_donut.update_layout(margin=dict(l=0, r=0, t=20, b=0), showlegend=True, 
                                     legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5))
-            # Desactivar la barra de herramientas interactiva molesta
             st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
 
     else:
@@ -499,8 +496,13 @@ with tab_registro:
                 "Visita de Configuración (Individual)": {"costo": visita_config_in, "dias": 1, "tipo": "individual"}
             }
 
-    st.markdown("### 🛠️ Materiales e Ingeniería")
-    costo_materiales = st.number_input("Costo Bruto Suministros / Subcontratos ($)", min_value=0.0, value=0.0, step=50.0)
+    st.markdown("### 🛠️ Materiales, Equipos y Logística Extra")
+    
+    col_mat1, col_mat2 = st.columns(2)
+    with col_mat1:
+        costo_materiales = st.number_input("Costo Bruto Suministros / Subcontratos ($)", min_value=0.0, value=0.0, step=50.0)
+    with col_mat2:
+        costo_traslado = st.number_input("Traslado de Equipos ($)", min_value=0.0, value=0.0, step=50.0)
 
     st.write("---")
     st.markdown("### 📈 Simulación y Precios")
@@ -510,7 +512,7 @@ with tab_registro:
     pct_ganancia_sugerida = col_pct2.slider("Margen de Utilidad (%)", min_value=0, max_value=100, value=40, step=5)
 
     costo_mano_obra = personal_activo["Costo Día ($)"].sum() * dias_trabajo
-    costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
+    costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales + costo_traslado
     
     reserva_imprevistos = costo_directo * (pct_imprevistos / 100)
     ganancia_calculada = costo_directo * (pct_ganancia_sugerida / 100)
@@ -558,7 +560,8 @@ with tab_registro:
                         "_Personal": personal_activo.to_dict('records'),
                         "_Tipo_Ubicacion": tipo_ubicacion,
                         "_Viaticos": dict_viaticos_guardar,
-                        "_Materiales": costo_materiales
+                        "_Materiales": costo_materiales,
+                        "_Traslado": costo_traslado
                     })
                     guardar_en_base_de_datos(st.session_state.proyectos)
                     st.success("✅ Guardado Exitosamente.")
