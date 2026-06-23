@@ -96,27 +96,35 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             pdf.cell(60, 6, f"${suma_personal:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             pdf.ln(3)
             
-            # Tabla Viáticos (60 + 40 + 30 + 60 = 190mm)
+            # Tabla Viáticos Condicional (60 + 40 + 30 + 60 = 190mm)
             pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(0, 6, "Desglose de Viáticos (Todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(0, 6, f"Desglose de Costos Operativos y Viáticos ({p.get('_Tipo_Ubicacion', 'Fuera de la ciudad')}):", new_x="LMARGIN", new_y="NEXT")
             pdf.cell(60, 6, "Concepto", border=1)
-            pdf.cell(40, 6, "Diario/Noche", border=1, align='C')
+            pdf.cell(40, 6, "Diario/Noche (c/u)", border=1, align='C')
             pdf.cell(30, 6, "Días", border=1, align='C')
-            pdf.cell(60, 6, "Total Grupo", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+            pdf.cell(60, 6, "Total Grupo / Rubro", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
             
             pdf.set_font("Helvetica", '', 9)
             num_personas = len(p["_Personal"])
             suma_viaticos = 0
+            
             for concepto, datos in p["_Viaticos"].items():
-                total_concepto = datos["costo"] * datos["dias"] * num_personas
+                if datos["tipo"] == "por_persona":
+                    total_concepto = datos["costo"] * datos["dias"] * num_personas
+                    pdf.cell(60, 6, concepto, border=1)
+                    pdf.cell(40, 6, f"${datos['costo']:,.2f}", border=1, align='C')
+                    pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
+                else: # Tipo individual
+                    total_concepto = datos["costo"]
+                    pdf.cell(60, 6, concepto, border=1)
+                    pdf.cell(40, 6, "Fijo Individual", border=1, align='C')
+                    pdf.cell(30, 6, "-", border=1, align='C')
+                    
                 suma_viaticos += total_concepto
-                pdf.cell(60, 6, concepto, border=1)
-                pdf.cell(40, 6, f"${datos['costo']:,.2f}", border=1, align='C')
-                pdf.cell(30, 6, str(datos['dias']), border=1, align='C')
                 pdf.cell(60, 6, f"${total_concepto:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
                 
             pdf.set_font("Helvetica", 'B', 9)
-            pdf.cell(130, 6, "TOTAL VIÁTICOS", border=1, align='R')
+            pdf.cell(130, 6, "TOTAL COSTOS OPERATIVOS / VIÁTICOS", border=1, align='R')
             pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
             pdf.ln(3)
             
@@ -206,7 +214,7 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
 
 
 # =========================================================================
-# --- CREACIÓN DE LA INTERFAZ CON PESTAÑAS (DE-SATURACIÓN VISUAL) ---
+# --- INTERFAZ GRÁFICA ---
 # =========================================================================
 
 st.subheader("Sistemas de Ingeniería y Control Financiero")
@@ -226,7 +234,6 @@ with tab_registro:
     mes_proyecto = col_mes.selectbox("Mes de Imputación Contable", meses_lista, index=mes_actual_idx)
     anio_proyecto = col_anio.number_input("Año Fiscal", min_value=2020, value=datetime.date.today().year)
 
-    # --- SECCIÓN DE PERSONAL EXPANDIDA A 10 CAMPOS ---
     with st.expander("👥 1. Configuración de Personal (Hasta 10 Técnicos/Campos)", expanded=False):
         st.write("Edita los nombres de los roles/técnicos, ajusta sus tarifas y marca la casilla 'Asignado' para incluirlos:")
         df_personal_base = pd.DataFrame([
@@ -243,33 +250,77 @@ with tab_registro:
         ])
         df_personal_editado = st.data_editor(df_personal_base, use_container_width=True, hide_index=True)
 
-    with st.expander("🚗 2. Gestión Estratégica de Viáticos (Por Persona)", expanded=False):
-        st.write("Establece las asignaciones y la cantidad de jornadas independientes:")
-        col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+    # --- SECCIÓN CONDICIONAL SOLICITADA: COSTOS OPERATIVOS ---
+    with st.expander("🚗 2. Costos Operativos y Viáticos", expanded=False):
+        tipo_ubicacion = st.selectbox("📍 Logística Geográfica", ["Fuera de la ciudad", "Dentro de la ciudad"])
         
-        with col_v1:
-            st.markdown("**Alimentación**")
-            alim_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=15.0, key="alim_c")
-            alim_dias = st.number_input("Días Aplicables", min_value=0, value=dias_trabajo, key="alim_d")
-        with col_v2:
-            st.markdown("**Movilización**")
-            mov_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=15.0, key="mov_c")
-            mov_dias = st.number_input("Días Aplicables", min_value=0, value=dias_trabajo, key="mov_d")
-        with col_v3:
-            st.markdown("**Hidratación**")
-            hidra_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=10.0, key="hidra_c")
-            hidra_dias = st.number_input("Días Aplicables", min_value=0, value=dias_trabajo, key="hidra_d")
-        with col_v4:
-            st.markdown("**Hospedaje**")
-            hosp_costo = st.number_input("Costo/Noche ($)", min_value=0.0, value=20.0, key="hosp_c")
-            hosp_dias = st.number_input("Noches Aplicables", min_value=0, value=max(0, dias_trabajo - 1), key="hosp_d")
+        # Inicialización de variables para cálculo seguro
+        costo_viaticos_total = 0.0
+        dict_viaticos_guardar = {}
+        
+        if tipo_ubicacion == "Fuera de la ciudad":
+            st.markdown("##### 🛣️ Parámetros Fuera de la Ciudad (Cálculo Grupal Multiplicado)")
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+            
+            with col_v1:
+                st.markdown("**Alimentación**")
+                alim_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=15.0, key="alim_c_out")
+                alim_dias = st.number_input("Días", min_value=0, value=dias_trabajo, key="alim_d_out")
+            with col_v2:
+                st.markdown("**Movilización**")
+                mov_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=15.0, key="mov_c_out")
+                mov_dias = st.number_input("Días", min_value=0, value=dias_trabajo, key="mov_d_out")
+            with col_v3:
+                st.markdown("**Hidratación**")
+                hidra_costo = st.number_input("Costo/Día ($)", min_value=0.0, value=10.0, key="hidra_c_out")
+                hidra_dias = st.number_input("Días", min_value=0, value=dias_trabajo, key="hidra_d_out")
+            with col_v4:
+                st.markdown("**Hospedaje**")
+                hosp_costo = st.number_input("Costo/Noche ($)", min_value=0.0, value=20.0, key="hosp_c_out")
+                hosp_dias = st.number_input("Noches", min_value=0, value=max(0, dias_trabajo - 1), key="hosp_d_out")
 
-        total_alim_pp = alim_costo * alim_dias
-        total_mov_pp = mov_costo * mov_dias
-        total_hidra_pp = hidra_costo * hidra_dias
-        total_hosp_pp = hosp_costo * hosp_dias
-        viatico_total_pp = total_alim_pp + total_mov_pp + total_hidra_pp + total_hosp_pp
-        st.caption(f"Subtotal Viáticos por Persona: ${viatico_total_pp:.2f}")
+            personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
+            num_personas = len(personal_activo)
+            
+            viatico_total_pp = (alim_costo * alim_dias) + (mov_costo * mov_dias) + (hidra_costo * hidra_dias) + (hosp_costo * hosp_dias)
+            costo_viaticos_total = viatico_total_pp * num_personas
+            
+            dict_viaticos_guardar = {
+                "Alimentación": {"costo": alim_costo, "dias": alim_dias, "tipo": "por_persona"},
+                "Movilización": {"costo": mov_costo, "dias": mov_dias, "tipo": "por_persona"},
+                "Hidratación": {"costo": hidra_costo, "dias": hidra_dias, "tipo": "por_persona"},
+                "Hospedaje": {"costo": hosp_costo, "dias": hosp_dias, "tipo": "por_persona"}
+            }
+            st.caption(f"Costo Viáticos del Grupo (Fuera de Ciudad): ${costo_viaticos_total:.2f}")
+
+        else: # Dentro de la ciudad
+            st.markdown("##### 🏙️ Parámetros Dentro de la Ciudad (Cálculo Mixto)")
+            col_dentro1, col_dentro2, col_dentro3 = st.columns(3)
+            
+            with col_dentro1:
+                st.markdown("**Alimentación (En Conjunto)**")
+                alim_costo_in = st.number_input("Costo/Día ($)", min_value=0.0, value=15.0, key="alim_c_in")
+                alim_dias_in = st.number_input("Días", min_value=0, value=dias_trabajo, key="alim_d_in")
+            with col_dentro2:
+                st.markdown("**Movilización (Individual / Fijo)**")
+                mov_total_in = st.number_input("Costo de Movilización Total ($)", min_value=0.0, value=25.0, key="mov_total_in")
+            with col_dentro3:
+                st.markdown("**Visita de Configuración (Individual)**")
+                visita_config_in = st.number_input("Costo Visita de Configuración ($)", min_value=0.0, value=30.0, key="vis_config_in")
+
+            personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
+            num_personas = len(personal_activo)
+            
+            # Alimentación va en conjunto (multiplicado por personas) | Movilización y Visita son fijos individuales
+            total_alimentacion_in = alim_costo_in * alim_dias_in * num_personas
+            costo_viaticos_total = total_alimentacion_in + mov_total_in + visita_config_in
+            
+            dict_viaticos_guardar = {
+                "Alimentación": {"costo": alim_costo_in, "dias": alim_dias_in, "tipo": "por_persona"},
+                "Movilización (Individual)": {"costo": mov_total_in, "dias": 1, "tipo": "individual"},
+                "Visita de Configuración (Individual)": {"costo": visita_config_in, "dias": 1, "tipo": "individual"}
+            }
+            st.caption(f"Costo Operativo Total (Dentro de Ciudad): ${costo_viaticos_total:.2f}")
 
     st.markdown("### 🛠️ 3. Suministros e Ingeniería")
     costo_materiales = st.number_input("Costos de Materiales, Equipos o Subcontratos ($)", min_value=0.0, value=0.0, step=50.0)
@@ -281,11 +332,8 @@ with tab_registro:
     pct_imprevistos = col_pct1.slider("Porcentaje de Resguardo para Imprevistos (%)", min_value=0, max_value=100, value=20, step=5)
     pct_ganancia_sugerida = col_pct2.slider("Porcentaje de Retorno / Ganancia Meta (%)", min_value=0, max_value=100, value=40, step=5)
 
-    # Filtrado y procesamiento matemático dinámico basado en los 10 campos
-    personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
-    num_personas = len(personal_activo)
+    # Procesamiento matemático consolidado
     costo_mano_obra = personal_activo["Costo Día ($)"].sum() * dias_trabajo
-    costo_viaticos_total = viatico_total_pp * num_personas
     costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
     
     reserva_imprevistos = costo_directo * (pct_imprevistos / 100)
@@ -331,12 +379,8 @@ with tab_registro:
                     "PRECIO TOTAL": precio_total_con_iva,
                     "_Dias": dias_trabajo,
                     "_Personal": personal_activo.to_dict('records'),
-                    "_Viaticos": {
-                        "Alimentación": {"costo": alim_costo, "dias": alim_dias},
-                        "Movilización": {"costo": mov_costo, "dias": mov_dias},
-                        "Hidratación": {"costo": hidra_costo, "dias": hidra_dias},
-                        "Hospedaje": {"costo": hosp_costo, "dias": hosp_dias}
-                    },
+                    "_Tipo_Ubicacion": tipo_ubicacion,
+                    "_Viaticos": dict_viaticos_guardar,
                     "_Materiales": costo_materiales
                 })
                 guardar_en_base_de_datos(st.session_state.proyectos)
