@@ -78,7 +78,7 @@ def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=No
             # Tabla Personal (70 + 60 + 60 = 190mm)
             pdf.set_font("Helvetica", 'B', 9)
             pdf.cell(0, 6, "Costo de Personal (Asignado a la obra):", new_x="LMARGIN", new_y="NEXT")
-            pdf.cell(70, 6, "Rol", border=1)
+            pdf.cell(70, 6, "Rol / Integrante", border=1)
             pdf.cell(60, 6, "Costo Diario por Persona", border=1, align='C')
             pdf.cell(60, 6, "Total Rol", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
             
@@ -226,13 +226,19 @@ with tab_registro:
     mes_proyecto = col_mes.selectbox("Mes de Imputación Contable", meses_lista, index=mes_actual_idx)
     anio_proyecto = col_anio.number_input("Año Fiscal", min_value=2020, value=datetime.date.today().year)
 
-    # Agrupamos las tablas complejas en acordeones colapsables para limpiar espacio
-    with st.expander("👥 1. Configuración de Personal y Mano de Obra Asignada", expanded=False):
-        st.write("Modifica los costos diarios según el contrato y marca como 'Asignado' a quienes viajen:")
+    # --- SECCIÓN DE PERSONAL EXPANDIDA A 10 CAMPOS ---
+    with st.expander("👥 1. Configuración de Personal (Hasta 10 Técnicos/Campos)", expanded=False):
+        st.write("Edita los nombres de los roles/técnicos, ajusta sus tarifas y marca la casilla 'Asignado' para incluirlos:")
         df_personal_base = pd.DataFrame([
             {"Rol": "Supervisor", "Costo Día ($)": 50.00, "Asignado": True},
             {"Rol": "Técnico 1", "Costo Día ($)": 37.50, "Asignado": True},
             {"Rol": "Técnico 2", "Costo Día ($)": 37.50, "Asignado": True},
+            {"Rol": "Técnico 3", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 4", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 5", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 6", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 7", "Costo Día ($)": 37.50, "Asignado": False},
+            {"Rol": "Técnico 8", "Costo Día ($)": 37.50, "Asignado": False},
             {"Rol": "Ayudante", "Costo Día ($)": 25.00, "Asignado": False}
         ])
         df_personal_editado = st.data_editor(df_personal_base, use_container_width=True, hide_index=True)
@@ -275,7 +281,7 @@ with tab_registro:
     pct_imprevistos = col_pct1.slider("Porcentaje de Resguardo para Imprevistos (%)", min_value=0, max_value=100, value=20, step=5)
     pct_ganancia_sugerida = col_pct2.slider("Porcentaje de Retorno / Ganancia Meta (%)", min_value=0, max_value=100, value=40, step=5)
 
-    # Ejecutar cálculos financieros internos en base a los inputs
+    # Filtrado y procesamiento matemático dinámico basado en los 10 campos
     personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
     num_personas = len(personal_activo)
     costo_mano_obra = personal_activo["Costo Día ($)"].sum() * dias_trabajo
@@ -286,7 +292,6 @@ with tab_registro:
     ganancia_calculada = costo_directo * (pct_ganancia_sugerida / 100)
     precio_sugerido = costo_directo + reserva_imprevistos + ganancia_calculada
 
-    # Recuadro dinámico e interactivo de ajuste comercial
     st.info(f"🎯 El precio de venta recomendado (Sin IVA) es: **${precio_sugerido:,.2f}**")
     
     precio_venta_final = st.number_input(
@@ -296,12 +301,10 @@ with tab_registro:
         step=10.0
     )
 
-    # Recalcular utilidades reales absorbiendo desviaciones del usuario
     ganancia_real = precio_venta_final - costo_directo - reserva_imprevistos
     iva_monto = precio_venta_final * 0.15
     precio_total_con_iva = precio_venta_final + iva_monto
 
-    # Cuadrícula de indicadores clave (KPIs)
     col_s1, col_s2, col_s3, col_s4 = st.columns(4)
     col_s1.metric("Costo Directo Puro", f"${costo_directo:,.2f}")
     col_s2.metric(f"Fondo Contingencia ({pct_imprevistos}%)", f"${reserva_imprevistos:,.2f}")
@@ -347,7 +350,6 @@ with tab_registro:
 # -------------------------------------------------------------------------
 with tab_reportes:
     if st.session_state.proyectos:
-        # Generar dataframe de visualización estructurado
         datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
         df_resultados = pd.DataFrame(datos_publicos).fillna(0)
         columnas_ordenadas = ["Año", "Mes", "Proyecto", "Costo Directo", "Fondo Imprevistos", "Ganancia Neta", "PRECIO VENTA FINAL", "IVA (15%)", "PRECIO TOTAL"]
@@ -362,7 +364,6 @@ with tab_reportes:
         )
         st.write("---")
 
-        # ESCENARIO 1: FILTRAR POR MES ESPECÍFICO
         if tipo_reporte == "Por Mes Específico":
             meses_disponibles = list(set([p["Mes"] for p in st.session_state.proyectos]))
             meses_ordenados = sorted(meses_disponibles, key=lambda x: meses_lista.index(x))
@@ -383,7 +384,6 @@ with tab_reportes:
                 data=pdf_mes, file_name=nombre_archivo, mime="application/pdf", type="primary", use_container_width=True
             )
 
-        # ESCENARIO 2: FILTRAR AÑO COMPLETO
         elif tipo_reporte == "Año Completo (Todos los Proyectos)":
             st.markdown("#### 🗓️ Reporte Contable Consolidado General")
             st.dataframe(df_resultados.style.format(formato_moneda), use_container_width=True, hide_index=True)
@@ -397,7 +397,6 @@ with tab_reportes:
                 data=pdf_anual, file_name=nombre_archivo, mime="application/pdf", type="primary", use_container_width=True
             )
             
-        # ESCENARIO 3: COTIZACIÓN INDIVIDUAL
         elif tipo_reporte == "Cotización Comercial Individual":
             nombres_proyectos = [p["Proyecto"] for p in st.session_state.proyectos]
             proyecto_seleccionado = st.selectbox("📂 Selecciona la Obra Correspondiente:", nombres_proyectos)
@@ -416,7 +415,6 @@ with tab_reportes:
                 data=pdf_individual, file_name=nombre_archivo, mime="application/pdf", type="primary", use_container_width=True
             )
 
-        # SECCIÓN DE ELIMINACIÓN REUBICADA DENTRO DE RECUADRO DE CONTROL
         st.write("---")
         with st.expander("⚙️ Gestión y Depuración de Registros (Zona de Peligro)"):
             st.markdown("**Remover proyectos erróneos o cancelados de la Base de Datos:**")
@@ -442,7 +440,6 @@ with tab_historial:
         df_global = pd.DataFrame([{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]).fillna(0)
         df_global["Costo Operativo"] = df_global["Costo Directo"] + df_global["Fondo Imprevistos"]
         
-        # Agrupación conjunta por mes
         resumen_mensual = df_global.groupby("Mes")[["Costo Operativo", "Ganancia Neta", "IVA (15%)", "PRECIO TOTAL"]].sum().reset_index()
         resumen_mensual["Mes_Num"] = resumen_mensual["Mes"].apply(lambda x: meses_lista.index(x) if x in meses_lista else 99)
         resumen_mensual = resumen_mensual.sort_values("Mes_Num").drop("Mes_Num", axis=1)
@@ -454,7 +451,6 @@ with tab_historial:
             "PRECIO TOTAL": "${:,.2f}"
         }), use_container_width=True, hide_index=True)
         
-        # Totales consolidados absolutos anuales
         t_costo = resumen_mensual["Costo Operativo"].sum()
         t_ganancia = resumen_mensual["Ganancia Neta"].sum()
         t_iva = resumen_mensual["IVA (15%)"].sum()
