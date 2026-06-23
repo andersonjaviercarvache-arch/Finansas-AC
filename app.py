@@ -23,7 +23,6 @@ st.write("---")
 st.subheader("1. Costos de Personal (Por Día)")
 st.write("Edita la tarifa o marca la casilla 'Asignado' para incluir al trabajador en esta obra.")
 
-# Tabla interactiva
 df_personal_base = pd.DataFrame([
     {"Rol": "Supervisor", "Costo Día ($)": 50.00, "Asignado": True},
     {"Rol": "Técnico 1", "Costo Día ($)": 37.50, "Asignado": True},
@@ -42,7 +41,7 @@ mov = col_v2.number_input("Movilización ($)", min_value=0.0, value=15.0)
 hidra = col_v3.number_input("Hidratación ($)", min_value=0.0, value=10.0)
 
 viatico_diario_pp = alim + mov + hidra
-st.info(f"**Total viáticos por persona al día:** ${viatico_diario_pp:.2f}")
+st.info(f"**Total viáticos diarios por persona:** ${viatico_diario_pp:.2f}")
 
 st.write("---")
 
@@ -50,70 +49,85 @@ st.write("---")
 st.subheader("3. Materiales y Otros")
 costo_materiales = st.number_input("Costo de Materiales o Equipos ($)", min_value=0.0, value=0.0, step=50.0)
 
-# 5. Botón de Procesamiento
-if st.button("Calcular Precio de Venta Ideal", type="primary"):
+st.write("---")
+
+# --- CÁLCULO REACTIVO PARA LA SUGERENCIA ---
+st.subheader("4. Sugerencia de Precio")
+
+# La app calcula todo en tiempo real
+personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
+num_personas = len(personal_activo)
+
+costo_mano_obra = personal_activo["Costo Día ($)"].sum() * dias_trabajo
+costo_viaticos_total = viatico_diario_pp * num_personas * dias_trabajo
+costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
+
+reserva_imprevistos = costo_directo * 0.20
+ganancia_esperada = costo_directo * 0.40
+
+# Sugerencia calculada
+precio_sugerido = costo_directo + reserva_imprevistos + ganancia_esperada
+
+# Mostrar desglose en tiempo real
+col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+col_s1.metric("Costo Directo", f"${costo_directo:,.2f}")
+col_s2.metric("Imprevistos (20%)", f"${reserva_imprevistos:,.2f}")
+col_s3.metric("Ganancia Base (40%)", f"${ganancia_esperada:,.2f}")
+col_s4.metric("PRECIO SUGERIDO", f"${precio_sugerido:,.2f}")
+
+st.info(f"💡 Según tu estructura de costos, te sugerimos cobrar un mínimo de **${precio_sugerido:,.2f}**.")
+
+# 5. Definición del Precio Final y Guardado
+st.write("¿Deseas redondear o ajustar este precio para tu cliente?")
+precio_final = st.number_input("Ingresa el Precio Final de Venta ($)", min_value=0.0, value=float(precio_sugerido), step=10.0)
+
+if st.button("Guardar Proyecto en el Mes", type="primary"):
     if nombre_proyecto:
-        # Filtrar solo el personal que fue marcado como "Asignado"
-        personal_activo = df_personal_editado[df_personal_editado["Asignado"] == True]
-        num_personas = len(personal_activo)
+        # Calculamos la utilidad real basada en el precio que finalmente decidiste cobrar
+        utilidad_real = precio_final - costo_directo - reserva_imprevistos
         
-        # Matemáticas del Costo Directo
-        costo_mano_obra = personal_activo["Costo Día ($)"].sum() * dias_trabajo
-        costo_viaticos_total = viatico_diario_pp * num_personas * dias_trabajo
-        costo_directo = costo_mano_obra + costo_viaticos_total + costo_materiales
-        
-        # Cálculo de Márgenes (40% Ganancia, 20% Imprevistos)
-        porcentaje_imprevistos = 0.20
-        porcentaje_ganancia = 0.40
-        
-        reserva_imprevistos = costo_directo * porcentaje_imprevistos
-        ganancia_neta = costo_directo * porcentaje_ganancia
-        
-        # Precio final sugerido
-        precio_venta = costo_directo + reserva_imprevistos + ganancia_neta
-        
-        # Guardar en memoria
         st.session_state.proyectos.append({
             "Proyecto": nombre_proyecto,
             "Costo Directo": costo_directo,
-            "Fondo Imprevistos (20%)": reserva_imprevistos,
-            "Ganancia Neta (40%)": ganancia_neta,
-            "PRECIO VENTA IDEAL": precio_venta
+            "Imprevistos (20%)": reserva_imprevistos,
+            "Precio Sugerido": precio_sugerido,
+            "PRECIO VENTA": precio_final,
+            "Utilidad Real": utilidad_real
         })
-        st.success(f"Proyecto '{nombre_proyecto}' procesado. El precio sugerido para el cliente es de ${precio_venta:,.2f}")
+        st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente.")
     else:
-        st.error("Por favor, ingresa un nombre para el proyecto antes de continuar.")
+        st.error("Por favor, ingresa el nombre del proyecto en la parte superior.")
 
 # --- SECCIÓN: REPORTE MENSUAL ---
 st.write("---")
-st.header("Reporte de Proyectos y Proyecciones")
+st.header("Reporte Mensual de Facturación")
 
 if st.session_state.proyectos:
     # Crear y mostrar tabla resumen
     df_resultados = pd.DataFrame(st.session_state.proyectos)
     
-    # Formatear a moneda para mejor lectura
+    # Formato visual
     df_mostrar = df_resultados.style.format({
         "Costo Directo": "${:,.2f}",
-        "Fondo Imprevistos (20%)": "${:,.2f}",
-        "Ganancia Neta (40%)": "${:,.2f}",
-        "PRECIO VENTA IDEAL": "${:,.2f}"
+        "Imprevistos (20%)": "${:,.2f}",
+        "Precio Sugerido": "${:,.2f}",
+        "PRECIO VENTA": "${:,.2f}",
+        "Utilidad Real": "${:,.2f}"
     })
     
     st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
     
-    # Cálculos finales para las métricas
+    # Sumatorias
     total_costos = df_resultados["Costo Directo"].sum()
-    total_imprevistos = df_resultados["Fondo Imprevistos (20%)"].sum()
-    total_ganancias = df_resultados["Ganancia Neta (40%)"].sum()
-    total_facturacion = df_resultados["PRECIO VENTA IDEAL"].sum()
+    total_imprevistos = df_resultados["Imprevistos (20%)"].sum()
+    total_utilidad = df_resultados["Utilidad Real"].sum()
+    total_facturacion = df_resultados["PRECIO VENTA"].sum()
     
-    # Tarjetas de indicadores
+    # Tarjetas resumen
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-    col_m1.metric("Costos Operativos", f"${total_costos:,.2f}")
-    col_m2.metric("Fondo de Imprevistos", f"${total_imprevistos:,.2f}")
-    col_m3.metric("Ganancia Total", f"${total_ganancias:,.2f}")
-    col_m4.metric("Facturación Proyectada", f"${total_facturacion:,.2f}")
-        
+    col_m1.metric("Gastos Directos", f"${total_costos:,.2f}")
+    col_m2.metric("Fondo de Emergencias", f"${total_imprevistos:,.2f}")
+    col_m3.metric("Utilidad Neta Real", f"${total_utilidad:,.2f}")
+    col_m4.metric("Facturación Total", f"${total_facturacion:,.2f}")
 else:
-    st.info("No hay proyectos registrados en este momento. Ingresa los datos arriba para comenzar.")
+    st.info("Aún no tienes proyectos guardados. Configura uno en la parte superior y presiona 'Guardar Proyecto'.")
