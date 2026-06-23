@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from fpdf import FPDF
 import os
+import datetime
 
 st.set_page_config(page_title="Gestor de Rentabilidad", layout="wide")
 
@@ -11,12 +12,17 @@ st.title("📊 Gestor Financiero - Latitud Solar")
 if 'proyectos' not in st.session_state:
     st.session_state.proyectos = []
 
+# Diccionario para traducir los meses
+meses_es = {1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio", 
+            7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"}
+
 # --- SECCIÓN: REGISTRO DE PROYECTO ---
 st.header("Registrar Nuevo Proyecto")
 
-col_info, col_dias = st.columns(2)
+col_info, col_dias, col_fecha = st.columns([2, 1, 1])
 nombre_proyecto = col_info.text_input("Nombre del Proyecto")
-dias_trabajo = col_dias.number_input("Días de Trabajo en Obra (Personal)", min_value=1, value=4)
+dias_trabajo = col_dias.number_input("Días de Obra (Personal)", min_value=1, value=4)
+fecha_proyecto = col_fecha.date_input("Fecha del Proyecto", value=datetime.date.today())
 
 st.write("---")
 
@@ -103,9 +109,7 @@ precio_venta_final = st.number_input(
     step=10.0
 )
 
-# Ganancia real ajustada al precio final editado
 ganancia_real = precio_venta_final - costo_directo - reserva_imprevistos
-
 iva_monto = precio_venta_final * 0.15
 precio_total_con_iva = precio_venta_final + iva_monto
 
@@ -123,7 +127,11 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
         if nombre_proyecto in nombres_existentes:
             st.error("Ya existe un proyecto con este nombre. Por favor, usa un nombre distinto.")
         else:
+            mes_str = meses_es[fecha_proyecto.month]
             st.session_state.proyectos.append({
+                "Fecha": fecha_proyecto.strftime("%Y-%m-%d"),
+                "Mes": mes_str,
+                "Año": fecha_proyecto.year,
                 "Proyecto": nombre_proyecto,
                 "Costo Directo": costo_directo,
                 "Fondo Imprevistos": reserva_imprevistos, 
@@ -141,29 +149,32 @@ if st.button("Guardar Proyecto en el Mes", type="primary"):
                 },
                 "_Materiales": costo_materiales
             })
-            st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente.")
+            st.success(f"Proyecto '{nombre_proyecto}' registrado exitosamente en {mes_str} {fecha_proyecto.year}.")
             st.rerun()
     else:
         st.error("Por favor, ingresa el nombre del proyecto.")
 
 # --- SECCIÓN: REPORTE MENSUAL Y DESCARGAS ---
 st.write("---")
-st.header("Reporte Mensual y Cotizaciones")
+st.header("Reporte de Proyectos y Cotizaciones")
 
 if st.session_state.proyectos:
     # 1. Mostrar Tabla General
     datos_publicos = [{k: v for k, v in p.items() if not k.startswith("_")} for p in st.session_state.proyectos]
     df_resultados = pd.DataFrame(datos_publicos)
-    
     df_resultados.fillna(0, inplace=True)
     
-    formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col != "Proyecto"}
+    # Reordenar columnas para que la tabla sea fácil de leer
+    columnas_ordenadas = ["Fecha", "Mes", "Proyecto", "Costo Directo", "Fondo Imprevistos", "Ganancia Neta", "PRECIO VENTA FINAL", "IVA (15%)", "PRECIO TOTAL"]
+    df_resultados = df_resultados[[col for col in columnas_ordenadas if col in df_resultados.columns]]
+    
+    formato_moneda = {col: "${:,.2f}" for col in df_resultados.columns if col not in ["Fecha", "Mes", "Proyecto", "Año"]}
     df_mostrar = df_resultados.style.format(formato_moneda)
     st.dataframe(df_mostrar, use_container_width=True, hide_index=True)
     
     # 2. Panel de Gestión (Eliminar y Descargar)
     st.write("---")
-    st.subheader("🛠️ Panel de Control de Proyectos")
+    st.subheader("🛠️ Panel de Control y Exportación")
     col_gest1, col_gest2 = st.columns(2)
     
     with col_gest1:
@@ -176,8 +187,8 @@ if st.session_state.proyectos:
             st.warning(f"El proyecto '{proyecto_a_eliminar}' ha sido eliminado.")
             st.rerun()
 
-    # --- LÓGICA DE EXPORTACIÓN A PDF (DINÁMICA) ---
-    def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, mes=None):
+    # --- LÓGICA DE EXPORTACIÓN A PDF (DINÁMICA Y FILTRADA) ---
+    def generar_pdf(lista_proyectos, df_interno, tipo_exportacion, titulo_reporte=None):
         pdf = FPDF(orientation="P", unit="mm", format="A4")
         pdf.set_margins(left=10, top=15, right=10)
         pdf.add_page() 
@@ -218,16 +229,14 @@ if st.session_state.proyectos:
 
             for p in lista_proyectos:
                 pdf.set_font("Helvetica", 'B', 10)
-                pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Duración Obra: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
+                pdf.cell(0, 8, f"Proyecto: {p['Proyecto']} (Fecha: {p['Fecha']} | Duración: {p['_Dias']} días)", new_x="LMARGIN", new_y="NEXT", align='L')
                 
-                # Tabla 1: Personal
+                # Tabla Personal
                 pdf.set_font("Helvetica", 'B', 9)
                 pdf.cell(0, 6, "Costo de Personal (Asignado a la obra):", new_x="LMARGIN", new_y="NEXT")
-                
-                pdf.set_font("Helvetica", 'B', 9)
                 pdf.cell(70, 6, "Rol", border=1)
                 pdf.cell(60, 6, "Costo Diario por Persona", border=1, align='C')
-                pdf.cell(60, 6, "Total Rol (Todos los días)", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+                pdf.cell(60, 6, "Total Rol", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
                 
                 pdf.set_font("Helvetica", '', 9)
                 suma_personal = 0
@@ -241,18 +250,15 @@ if st.session_state.proyectos:
                 pdf.set_font("Helvetica", 'B', 9)
                 pdf.cell(130, 6, "TOTAL COSTO PERSONAL", border=1, align='R')
                 pdf.cell(60, 6, f"${suma_personal:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
-                
                 pdf.ln(3)
                 
-                # Tabla 2: Viáticos
+                # Tabla Viáticos
                 pdf.set_font("Helvetica", 'B', 9)
-                pdf.cell(0, 6, "Desglose de Viáticos (Calculado para todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
-                
-                pdf.set_font("Helvetica", 'B', 9)
+                pdf.cell(0, 6, "Desglose de Viáticos (Todo el personal asignado):", new_x="LMARGIN", new_y="NEXT")
                 pdf.cell(60, 6, "Concepto", border=1)
-                pdf.cell(40, 6, "Diario/Noche (c/u)", border=1, align='C')
+                pdf.cell(40, 6, "Diario/Noche", border=1, align='C')
                 pdf.cell(30, 6, "Días", border=1, align='C')
-                pdf.cell(60, 6, "Costo Total del Grupo", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
+                pdf.cell(60, 6, "Total Grupo", border=1, new_x="LMARGIN", new_y="NEXT", align='C')
                 
                 pdf.set_font("Helvetica", '', 9)
                 num_personas = len(p["_Personal"])
@@ -268,9 +274,8 @@ if st.session_state.proyectos:
                 pdf.set_font("Helvetica", 'B', 9)
                 pdf.cell(130, 6, "TOTAL VIÁTICOS", border=1, align='R')
                 pdf.cell(60, 6, f"${suma_viaticos:,.2f}", border=1, align='R', new_x="LMARGIN", new_y="NEXT")
-                
                 pdf.ln(3)
-                # Otros
+                
                 pdf.set_font("Helvetica", '', 9)
                 pdf.cell(0, 6, f"Materiales y Otros Costos: ${p['_Materiales']:,.2f}", new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(8)
@@ -301,11 +306,10 @@ if st.session_state.proyectos:
 
         elif tipo_exportacion == "todos":
             # ==========================================
-            # REPORTE GENERAL (Consolidado)
+            # REPORTE GENERAL (Consolidado por Mes)
             # ==========================================
             pdf.set_font("Helvetica", 'B', 14)
-            titulo_mes = f"REPORTE INTERNO DE RENTABILIDAD - {mes.upper()}" if mes else "REPORTE INTERNO DE RENTABILIDAD"
-            pdf.cell(0, 8, titulo_mes, new_x="LMARGIN", new_y="NEXT", align='C')
+            pdf.cell(0, 8, titulo_reporte, new_x="LMARGIN", new_y="NEXT", align='C')
             pdf.ln(5)
             
             # Encabezados ajustados a 190mm (40 + 25x6 = 190)
@@ -320,12 +324,7 @@ if st.session_state.proyectos:
             
             pdf.set_font("Helvetica", '', 8)
             
-            sum_costo = 0
-            sum_imprev = 0
-            sum_ganancia = 0
-            sum_iva = 0
-            sum_venta = 0
-            sum_total = 0
+            sum_costo = sum_imprev = sum_ganancia = sum_iva = sum_venta = sum_total = 0
             
             for _, row in df_interno.iterrows():
                 nombre = str(row['Proyecto'])[:20]
@@ -368,37 +367,22 @@ if st.session_state.proyectos:
         os.remove(temp_file)
         return pdf_bytes
 
-    # Herramienta para Descargar
     with col_gest2:
-        st.markdown("**📥 Descargar PDF Comercial / Reporte**")
-        opciones_descarga = ["Todos los proyectos"] + nombres_proyectos
+        st.markdown("**📥 Descargar PDF**")
+        opciones_descarga = ["Todos los proyectos (Por Mes)"] + nombres_proyectos
         seleccion_descarga = st.selectbox("Selecciona qué deseas exportar al PDF:", opciones_descarga)
         
-        meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-        
-        if seleccion_descarga == "Todos los proyectos":
-            mes_seleccionado = st.selectbox("Selecciona el mes del reporte:", meses)
+        if seleccion_descarga == "Todos los proyectos (Por Mes)":
+            # Extraer meses únicos que tienen proyectos registrados para no mostrar meses vacíos
+            meses_disponibles = list(set([p["Mes"] for p in st.session_state.proyectos]))
+            # Ordenar meses cronológicamente usando el diccionario inverso
+            meses_ordenados = sorted(meses_disponibles, key=lambda x: list(meses_es.values()).index(x))
             
-            lista_a_exportar = st.session_state.proyectos
-            df_a_exportar = df_resultados
-            nombre_archivo = f"Todos_los_proyectos_{mes_seleccionado}.pdf"
+            mes_seleccionado = st.selectbox("Selecciona el mes a exportar:", meses_ordenados)
             
-            pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar, tipo_exportacion="todos", mes=mes_seleccionado)
-        else:
-            lista_a_exportar = [p for p in st.session_state.proyectos if p["Proyecto"] == seleccion_descarga]
-            df_a_exportar = df_resultados[df_resultados["Proyecto"] == seleccion_descarga]
-            nombre_archivo = f"Cotizacion_{seleccion_descarga.replace(' ', '_')}.pdf"
+            # Filtro lógico
+            lista_a_exportar = [p for p in st.session_state.proyectos if p["Mes"] == mes_seleccionado]
+            df_a_exportar = df_resultados[df_resultados["Mes"] == mes_seleccionado]
             
-            pdf_generado = generar_pdf(lista_a_exportar, df_a_exportar, tipo_exportacion="individual")
-            
-        st.download_button(
-            label=f"📄 Descargar",
-            data=pdf_generado,
-            file_name=nombre_archivo,
-            mime="application/pdf",
-            type="primary",
-            use_container_width=True
-        )
-
-else:
-    st.info("Aún no tienes proyectos guardados. Configura uno en la parte superior y presiona 'Guardar Proyecto'.")
+            titulo_doc = f"REPORTE INTERNO DE RENTABILIDAD - {mes_seleccionado.upper()}"
+            nombre_archivo = f"Pro
